@@ -17,6 +17,8 @@ def get_labs_mapping(events):
             Schema: |event_type|code|
             Desc: mapping from code to labs_/vitals_ event_type
     """
+
+    # compute mapping
     temp = (
         events
         .filter(
@@ -25,6 +27,12 @@ def get_labs_mapping(events):
         .select("event_type", "code")
         .distinct()
     )
+
+    # guard against misuse
+    if temp.count() == 0:
+        raise Exception("No labs_ or vitals_ events to map! (Are you working with non PMBB-OMOP data and haven't run etl_labs_vitals()?)")
+    
+    # convert to pandas and return
     return temp.toPandas()
 
 def bin_measurements(events):
@@ -54,6 +62,10 @@ def bin_measurements(events):
         ~F.col("event_type").startswith("labs_") & ~F.col("event_type").startswith("vitals_")
     )
 
+    # guard against misuse
+    if lv.count() == 0:
+        raise Exception("No labs_ or vitals_ events to map! (Are you working with non PMBB-OMOP data and haven't run etl_labs_vitals()?)")
+
     # replace all negative measurements with zero
     lv = lv.withColumn(
         "numeric_value",
@@ -69,6 +81,10 @@ def bin_measurements(events):
         "numeric_value",
         F.when(F.col("is_homogeneous"), F.lit(None)).otherwise(F.col("numeric_value"))
     ).drop("is_homogeneous")
+
+    # guard against misuse
+    if lv.count() == 0:
+        raise Exception("Getting rid of homogenous measures deleted all labs and vitals info")
 
     # transform values via log1p
     lv = lv.withColumn("numeric_value", F.log1p(F.col("numeric_value")))
