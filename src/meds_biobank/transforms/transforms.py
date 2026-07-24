@@ -6,17 +6,26 @@ def etl_labs_vitals(events):
     pass
 
 def get_labs_mapping(events):
-    # return mapping btw labs_/vitals_<name> and concept_id
-    return (
+    """
+    Args:
+        events (pyspark.sql.DataFrame):
+            Desc: MEDS events table
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+
+    Returns:
+        labs_mapping (pandas.DataFrame):
+            Schema: |event_type|code|
+            Desc: mapping from code to labs_/vitals_ event_type
+    """
+    temp = (
         events
         .filter(
             F.col("event_type").startswith("labs_") | F.col("event_type").startswith("vitals_")
         )
         .select("event_type", "code")
         .distinct()
-        .groupBy("event_type")
-        .agg(F.collect_set("code").alias("codes"))
     )
+    return temp.toPandas()
 
 def bin_measurements(events):
     """
@@ -29,7 +38,8 @@ def bin_measurements(events):
         events (pyspark.sql.DataFrame):
             Desc:
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-        decile_mapping:
+        decile_mapping (pandas.DataFrame):
+            Schema: |event_type|decile|min_value|max_value|
             Desc: map from table to decile bin values
     
     Notes:
@@ -91,7 +101,7 @@ def bin_measurements(events):
     # final rejoin
     events_out = other.unionByName(lv, allowMissingColumns=True)
 
-    return events_out, mapping
+    return events_out, mapping.toPandas()
 
 def rollup_concepts(events, concept_ancestor):
     """
