@@ -32,6 +32,11 @@ def extract_events(df, table, use_omop_cid=True):
                 code = concept_id (NOT vocabulary_id/code)
     """
 
+    # fix source val cols
+    for col in df.columns:
+        if col.endswith("_source_value"):
+            df = df.withColumn(col, F.col(col).cast("string"))
+
     # all source tables, hash patient id
     events = df.withColumn("patient_id", F.crc32(F.col("person_id").cast("string"))) # hash to patient id
 
@@ -270,7 +275,7 @@ def extract_events(df, table, use_omop_cid=True):
     elif table == "measurement":
 
         # dedup
-        events = events.dropDuplicates("measurement_id")
+        events = events.dropDuplicates(["measurement_id"])
 
         # get measurement events
         events = (
@@ -320,7 +325,7 @@ def extract_events(df, table, use_omop_cid=True):
                 )
             )
             .filter(F.col("concept_id") != 0)
-            .withColumn("value", F.col("value_converted"))
+            .withColumn("value", F.col("value_converted").cast("string"))
             .withColumn("event_type", F.lit(f"{table}"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("unit", F.col("unit_converted"))
@@ -350,7 +355,7 @@ def extract_events(df, table, use_omop_cid=True):
         
     return events
 
-def gather_event_dfs(event_dfs, measurement):
+def gather_events(event_dfs, measurement_events):
     """
     Desc:
         Compile separate events tables into a single table
@@ -369,7 +374,7 @@ def gather_event_dfs(event_dfs, measurement):
 
     # handle case with only meas events
     if len(event_dfs) == 0:
-        return measurement
+        return measurement_events
 
     # handle non-measurement event dfs
     final_df = event_dfs[0]
@@ -377,10 +382,10 @@ def gather_event_dfs(event_dfs, measurement):
         final_df = final_df.unionByName(df, allowMissingColumns=False)
     
     # add measurements if they are present
-    if measurement != None:
+    if measurement_events != None:
         used_mid = final_df.select("measurement_id").distinct()
-        measurement = measurement.join(used_mid, "measurement_id", "left_anti") # drop measurements covered in labs and vitals
-        final_df = final_df.unionByName(measurement, allowMissingColumns=False)
+        measurement_events = measurement_events.join(used_mid, "measurement_id", "left_anti") # drop measurements covered in labs and vitals
+        final_df = final_df.unionByName(measurement_events, allowMissingColumns=False)
     
     return final_df.drop("measurement_id")
 
@@ -428,7 +433,7 @@ def prune_events(events):
 
     return pruned_events
 
-def post_process(events):
+def post_process_events(events):
     """
     Args:
         events (pyspark.sql.DataFrame):
@@ -459,3 +464,87 @@ def format_events(events):
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
     return events.orderBy("patient_id", "time")
+
+if __name__ == "__main__":
+
+    """
+    create example events data for transforms and tokenizer tests from test data for etl process
+    """
+    
+    # imports
+    from pathlib import Path
+    from pyspark.sql import SparkSession
+    import shutil
+
+    # create spark session
+    spark = (
+        SparkSession.builder
+        .master("local[2]")
+        .appName("meds-biobank")
+        .config("spark.sql.shuffle.partitions", "2")
+        .getOrCreate()
+    )
+
+    # set data dir
+    data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
+
+    # read data tables
+    tables = [
+        spark.read.csv(str(data_dir / "condition_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "death.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "drug_exposure.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True)
+    ]
+    labs = [
+        spark.read.csv(str(data_dir / "labs_creatinine.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "labs_glucose.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "labs_hba1c.csv"), header=True, inferSchema=True)
+    ]
+    vitals = [
+        spark.read.csv(str(data_dir / "vitals_heart_rate.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "vitals_spo2.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "vitals_systolic_bp.csv"), header=True, inferSchema=True)
+    ]
+    measurement = spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+
+    # record table names
+    table_names = ["condition_occurrence", "death", "drug_exposure", "observation", "person", "procedure_occurrence", "visit_occurrence"]
+    lab_names = ["labs_creatinine", "labs_glucose", "labs_hba1c"]
+    vital_names = ["vitals_heart_rate", "vitals_spo2", "vitals_systolic_bp"]
+
+    # extract events
+    event_dfs = []
+    for table, name in zip(tables, table_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    for table, name in zip(labs, lab_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    for table, name in zip(vitals, vital_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    
+    # extract measurement events
+    measurement_events = extract_events(measurement, "measurement")
+
+    # gather events together
+    gathered_events = gather_events(event_dfs, measurement_events)
+
+    # prune events
+    pruned_events = prune_events(gathered_events)
+
+    # post process events
+    post_processed_events = post_process_events(pruned_events)
+
+    # format events
+    formatted_events = format_events(post_processed_events)
+
+    # show
+    print(formatted_events.limit(25).toPandas())
+
+    # set write dir
+    write_dir = "/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv"
+    formatted_events.toPandas().to_csv(str(write_dir), index=False)

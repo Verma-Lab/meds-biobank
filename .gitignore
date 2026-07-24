@@ -3,3 +3,4 @@
 /data
 *.egg-info/
 instructions.txt
+.pytest_cache
