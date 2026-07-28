@@ -92,8 +92,32 @@ Flags:
 
 ### Transforms
 
-**etl_labs_vitals**
-Expects events table in the format |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|. Performs labs/vitals ETL.
+---
 
-**etl_labs_vitals**
-Expects events table in the format |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|. Post labs/vitals ETL. Extracts mapping from omop concept ids to labs_/vitals_ names
+## PMBB Workflow
+
+- Run etl_pipelines/pmbb_meds.py on raw OMOP tables to compute the ordered patient meds dataframe in the schema:
+```bash
+|patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+```
+- Create an ontology
+  - Read concept, concept_ancestor, classifications and compute concept ontology. Store code_to_domain, code_to_name, code_to_description, code_to_qualifiers, code_to_ancestors.
+  - Read meds events dataframe and perform rollup on concept heirarchy.
+  - Read meds events dataframe and compute measurement ontology. Store: code_to_decile_ranges, code_to_unit
+  - Does not modify
+- Create a tokenizer
+  - This will take an ontology and assign token ids to all codes, deciles, qualifiers, and domains
+  - It will take a raw MEDS patient and output a token sequence, time sequence, and visit index sequence.
+    - Rollout for measurements
+    - Optional: ontology rollout, qualifier rollout, domain rollout
+  - It will take a token sequence, time sequence, and visit index sequence and output a raw MEDS patient.
+    - Random assignment of patient id
+- Create a tokenizer wrapper
+  - This will take a tokenizer and assign extra token ids for time passage, meta-annotations (BOS/EOS/BOV/EOV), 
+  - It will take a token sequence, time sequence, and visit index sequence and output a pure token sequence
+  - It will take a pure token sequence and output a token sequence, time sequence, and visit index sequence
+    - Recognize BOS, EOS, PAD
+    - Detect birth event and assign time = 0, otherwise first event is time = 0
+    - Detect time passage tokens, BOV/EOV tokens, compute sequences
+- Optional: create a language tokenizer
+  - This will take a pure token sequence and convert it to a pure language sequence along with a mapping of indices in the string sequence to token id's
