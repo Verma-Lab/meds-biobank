@@ -45,9 +45,9 @@ def bin_measurements(events):
     Returns:
         events (pyspark.sql.DataFrame):
             Desc:
-            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|numeric_value|text_value|decile_value|unit|event_type|visit_id|
         decile_mapping (pandas.DataFrame):
-            Schema: |event_type|decile|min_value|max_value|
+            Schema: |event_type|decile_value|min_value|max_value|
             Desc: map from table to decile bin values
     
     Notes:
@@ -96,23 +96,20 @@ def bin_measurements(events):
 
     # bucketize
     w_ntile = Window.partitionBy("event_type").orderBy("numeric_value")
-    nonzero_df = nonzero_df.withColumn("decile", F.ntile(10).over(w_ntile))  # 1-10
-    zero_df = zero_df.withColumn("decile", F.lit(0))
-    null_df = null_df.withColumn("decile", F.lit(None).cast("int"))
+    nonzero_df = nonzero_df.withColumn("decile_value", F.ntile(10).over(w_ntile))  # 1-10
+    zero_df = zero_df.withColumn("decile_value", F.lit(0))
+    null_df = null_df.withColumn("decile_value", F.lit(None).cast("int"))
 
     # rejoin
     lv = zero_df.unionByName(nonzero_df).unionByName(null_df)
 
     # bin -> value range mapping, keyed on code+event_type+decile
     mapping = (
-        lv.filter(F.col("decile").isNotNull())
-        .groupBy("event_type", "decile")
+        lv.filter(F.col("decile_value").isNotNull())
+        .groupBy("event_type", "decile_value")
         .agg(F.min("numeric_value").alias("min_value"), F.max("numeric_value").alias("max_value"))
-        .orderBy("event_type", "decile")
+        .orderBy("event_type", "decile_value")
     )
-
-    # clean up
-    lv = lv.withColumn("numeric_value", F.col("decile")).drop("decile")
 
     # final rejoin
     events_out = other.unionByName(lv, allowMissingColumns=True)
@@ -138,4 +135,5 @@ def rollup_concepts(events, concept_ancestor):
         • Do not roll up labs and vitals
     """
     # TODO: option to rollup infrequent concepts into frequent ancestors, and optionally drop non-mapped
+    # TODO: algo: if a concept is too infrequent, 
     pass

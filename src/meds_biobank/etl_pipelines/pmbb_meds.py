@@ -16,6 +16,7 @@ CUSTOM_CONCEPTS = {
 def extract_events(df, table, use_omop_cid=True):
     """
     Convert an OMOP table into an unordered MEDS-DataSchema-LIKE table in flat format, containing all events
+    Reads: visit_occurrence (admission and discharge), visit_supplement, drug_exposure, condition_occurrence, observation, procedure_occurrence, measurement, labs_, vitals_, death, person
 
     Args:
         df (pyspark.sql.DataFrame):
@@ -145,6 +146,7 @@ def extract_events(df, table, use_omop_cid=True):
         discharge_events = (
             events
             .filter(F.col("discharge_to_concept_id").isNotNull())
+            .filter(F.col("discharge_to_concept_id") != 0)
             .withColumn("omop_concept_id", F.col("discharge_to_concept_id"))
             .withColumnRenamed("discharge_to_concept_id", "concept_id")
             .withColumn("time", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
@@ -480,7 +482,7 @@ if __name__ == "__main__":
     spark = (
         SparkSession.builder
         .master("local[2]")
-        .appName("meds-biobank")
+        .appName("meds-biobank-etl")
         .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
     )

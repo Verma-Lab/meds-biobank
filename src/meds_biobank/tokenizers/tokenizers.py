@@ -228,12 +228,3 @@ class Tokenizer():
             • Assign unit from lab/vital type of msmt concept id if it maps
         """
         pass
-    
-    def visualize(self, events):
-        """
-        Args:
-            events (List<Dict>):
-                Desc: Records for a single patient, ordered by time, asc
-                Dict Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-        """
-        pass
