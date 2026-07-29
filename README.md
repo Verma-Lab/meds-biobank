@@ -96,15 +96,19 @@ Flags:
 
 ## PMBB Workflow
 
-- Run etl_pipelines/pmbb_meds.py on raw OMOP tables to compute the ordered patient meds dataframe in the schema:
+1. Run etl_pipelines/pmbb_meds.py on raw OMOP tables to compute the ordered patient meds dataframe in the schema:
 ```bash
 |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
 ```
-- Create an ontology
-  - Read concept, concept_ancestor, classifications and compute concept ontology. Store code_to_domain, code_to_name, code_to_description, code_to_qualifiers, code_to_ancestors.
-  - Read meds events dataframe and perform rollup on concept heirarchy.
-  - Read meds events dataframe and compute measurement ontology. Store: code_to_decile_ranges, code_to_unit
-  - Does not modify
+2. Create an ontology
+  - Read concept, concept_ancestor, classifications.
+  - Compute conceptual ontology: code_to_domain, code_to_name, code_to_description, code_to_qualifiers, code_to_ancestors.
+  - Compute msmt ontology: code_to_decile_ranges, code_to_unit
+  - Compute concept rollup: rollup_map
+  - Methods to load from saved or save as pkl.
+3. Create a tokenizer
+
+
 - Create a tokenizer
   - This will take an ontology and assign token ids to all codes, deciles, qualifiers, and domains
   - It will take a raw MEDS patient and output a token sequence, time sequence, and visit index sequence.
