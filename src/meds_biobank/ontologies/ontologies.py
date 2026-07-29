@@ -25,7 +25,7 @@ class Ontology():
         self.domain_to_decile_ranges = None # e.g. labs_albumin: d1: (min: x, max: x')
         self.rollup_map = None # e.g. 10454: 10234123
 
-    def compute_concept_ontology(self, concept, concept_ancestor, qualifications, events):
+    def compute_concept_ontology(self, events, concept, concept_ancestor, qualifications=None):
         """
         Args:
             concept (pyspark.sql.DataFrame): |concept_id|metadata|
@@ -42,10 +42,11 @@ class Ontology():
         # compute concept ontology
         self.codes = [row["concept_id"] for row in concept.select("concept_id").distinct().collect()]
         self.code_to_name = {row["concept_id"]: row["concept_name"] for row in concept.select("concept_id", "concept_name").collect()}
-        qualifications_temp = qualifications.withColumn("temp", F.concat(F.col("source"), F.lit("/"), F.col("qualification")))
-        self.qualifiers = list({row["temp"] for row in qualifications_temp.select("temp").collect()})
-        qualifications_temp = qualifications_temp.groupBy("code").agg(F.collect_list("temp").alias("temp"))
-        self.code_to_qualifiers = {row["code"]: list(row["temp"]) for row in qualifications_temp.select("code", "temp").collect()}
+        if qualifications is not None:
+            qualifications_temp = qualifications.withColumn("temp", F.concat(F.col("source"), F.lit("/"), F.col("qualification")))
+            self.qualifiers = list({row["temp"] for row in qualifications_temp.select("temp").collect()})
+            qualifications_temp = qualifications_temp.groupBy("code").agg(F.collect_list("temp").alias("temp"))
+            self.code_to_qualifiers = {row["code"]: list(row["temp"]) for row in qualifications_temp.select("code", "temp").collect()}
         ancestors_temp = concept_ancestor.drop(F.col("max_levels_of_separation")).filter(F.col("min_levels_of_separation") == 1)
         ancestors_temp = ancestors_temp.groupBy(F.col("descendant_concept_id")).agg(F.collect_list("ancestor_concept_id").alias("parents"))
         self.code_to_parents = {row["descendant_concept_id"]: list(row["parents"]) for row in ancestors_temp.collect()}
@@ -148,20 +149,18 @@ class Ontology():
         if not os.path.exists(dirname):
             raise Exception(f"ERROR: Unable to locate path {dirname} to save ontology. Does it exist yet? (save_to_disk does not create it)")
 
-        # catch error: one of the ontology files does not exist
-        paths = ["codes", "domains", "qualifiers", "deciles", "special_codes", "code_to_domain", "code_to_name", "code_to_qualifiers", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
+        # catch error: one of the CORE ontology files does not exist
+        paths = ["codes", "domains", "deciles", "special_codes", "code_to_domain", "code_to_name", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
         paths = [path + ".json" for path in paths]
         for path in paths:
             if not os.path.exists(os.path.join(dirname, path)):
-                raise Exception(f"ERROR: File {path} does not exist in location {dirname}.")
+                raise Exception(f"ERROR: Core ontology file {path} does not exist in location {dirname}.")
         
         # if we get here, read the files
         with open(os.path.join(dirname, "codes.json"), "r") as file:
             self.codes = json.load(file)
         with open(os.path.join(dirname, "domains.json"), "r") as file:
             self.domains = json.load(file)
-        with open(os.path.join(dirname, "qualifiers.json"), "r") as file:
-            self.qualifiers = json.load(file)
         with open(os.path.join(dirname, "deciles.json"), "r") as file:
             self.deciles = json.load(file)
         with open(os.path.join(dirname, "special_codes.json"), "r") as file:
@@ -170,8 +169,6 @@ class Ontology():
             self.code_to_domain = json.load(file)
         with open(os.path.join(dirname, "code_to_name.json"), "r") as file:
             self.code_to_name = json.load(file)
-        with open(os.path.join(dirname, "code_to_qualifiers.json"), "r") as file:
-            self.code_to_qualifiers = json.load(file)
         with open(os.path.join(dirname, "code_to_parents.json"), "r") as file:
             self.code_to_parents = json.load(file)
         with open(os.path.join(dirname, "domain_to_unit.json"), "r") as file:
@@ -180,6 +177,13 @@ class Ontology():
             self.domain_to_decile_ranges = json.load(file)
         with open(os.path.join(dirname, "rollup_map.json"), "r") as file:
             self.rollup_map = json.load(file)
+        
+        # read qualifier files as well if they exist
+        if os.path.exists(os.path.join(dirname, "qualifiers.json")):
+            with open(os.path.join(dirname, "qualifiers.json"), "r") as file:
+                self.qualifiers = json.load(file)
+            with open(os.path.join(dirname, "code_to_qualifiers.json"), "r") as file:
+                self.code_to_qualifiers = json.load(file)
     
     def save_to_disk(self, dirname, override=False):
         """
@@ -203,8 +207,6 @@ class Ontology():
             json.dump(self.codes, file, indent=4)
         with open(os.path.join(dirname, "domains.json"), "w") as file:
             json.dump(self.domains, file, indent=4)
-        with open(os.path.join(dirname, "qualifiers.json"), "w") as file:
-            json.dump(self.qualifiers, file, indent=4)
         with open(os.path.join(dirname, "deciles.json"), "w") as file:
             json.dump(self.deciles, file, indent=4)
         with open(os.path.join(dirname, "special_codes.json"), "w") as file:
@@ -213,8 +215,6 @@ class Ontology():
             json.dump(self.code_to_domain, file, indent=4)
         with open(os.path.join(dirname, "code_to_name.json"), "w") as file:
             json.dump(self.code_to_name, file, indent=4)
-        with open(os.path.join(dirname, "code_to_qualifiers.json"), "w") as file:
-            json.dump(self.code_to_qualifiers, file, indent=4)
         with open(os.path.join(dirname, "code_to_parents.json"), "w") as file:
             json.dump(self.code_to_parents, file, indent=4)
         with open(os.path.join(dirname, "domain_to_unit.json"), "w") as file:
@@ -223,6 +223,13 @@ class Ontology():
             json.dump(self.domain_to_decile_ranges, file, indent=4)
         with open(os.path.join(dirname, "rollup_map.json"), "w") as file:
             json.dump(self.rollup_map, file, indent=4)
+
+        # if we have qualifiers to write, write them
+        if self.qualifiers is not None:
+            with open(os.path.join(dirname, "qualifiers.json"), "w") as file:
+                json.dump(self.qualifiers, file, indent=4)
+            with open(os.path.join(dirname, "code_to_qualifiers.json"), "w") as file:
+                json.dump(self.code_to_qualifiers, file, indent=4)
     
     def rollup_concepts(self, events, concept_ancestor, threshold=0.01):
         """
@@ -262,14 +269,51 @@ class Ontology():
         ).select("descendant_concept_id", "ancestor_concept_id") # |descendant_cid|target_code|
         self.rollup_map = {row["descendant_concept_id"]: row["ancestor_concept_id"] for row in rollup_map.collect()}
 
-        # drop codes from ontology mappings and lists if they are not above threshold: do not drop special
+        # drop codes from ontology mappings and lists if they are not above threshold or never observed: do not drop special
         special_vals = set(self.SPECIAL_CODES.values())
-        below_thresh_codes = {row["code"] for row in code_freq.filter(F.col("freq") < threshold).collect()}
-        codes_to_drop = below_thresh_codes - special_vals
-        for mapping in (self.code_to_domain, self.code_to_name, self.code_to_qualifiers, self.code_to_parents):
+        code_freq_rows = code_freq.collect()
+        observed_codes = {row["code"] for row in code_freq_rows}
+        below_thresh_codes = {row["code"] for row in code_freq_rows if row["freq"] < threshold}
+        unobserved_codes = set(self.codes) - observed_codes
+        codes_to_drop = (below_thresh_codes | unobserved_codes) - special_vals
+        for mapping in (self.code_to_domain, self.code_to_name, self.code_to_parents):
             for code in codes_to_drop:
                 mapping.pop(code, None)
+        if self.code_to_qualifiers is not None:
+            for code in codes_to_drop:
+                self.code_to_qualifiers.pop(code, None)
         self.codes = list(set(self.codes) - set(codes_to_drop))
         
         
-    
+if __name__ == "__main__":
+
+    # imports
+    from pyspark.sql import SparkSession
+
+    # init spark session
+    spark = (
+        SparkSession.builder
+        .master("local[2]")
+        .appName("meds-ontology")
+        .config("spark.sql.shuffle.partitions", "2")
+        .getOrCreate()
+    )
+
+    # read concept, concept_ancestor, qualifications, and events
+    events = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv", header=True, inferSchema=True)
+    concept = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept.csv", header=True, inferSchema=True)
+    concept_ancestor = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept_ancestor.csv", header=True, inferSchema=True)
+
+    # set dirname
+    dirname = "/Users/zolensky/Code/meds-biobank/data/ontologies"
+
+    # create ontology object, fit, and save
+    ontology = Ontology()
+    ontology.compute_concept_ontology(events, concept, concept_ancestor)
+    ontology.bin_measurements(events)
+    ontology.rollup_concepts(events, concept_ancestor)
+    ontology.save_to_disk(dirname, override=True)
+
+    # load saved ontology object
+    new_ontology = Ontology()
+    new_ontology.load_from_disk(dirname)
