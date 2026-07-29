@@ -49,7 +49,7 @@ def test_omop_pipeline(
     assert set(formatted_events.columns) == {"patient_id", "time", "code", "event_type", "text_value", "numeric_value", "end", "visit_id", "unit"}
     formatted_events.collect()
 
-def test_pmbb_pipeline(
+def test_pmbb_omop_pipeline(
     spark,
     pmbb_condition_occurrence,
     pmbb_death,

@@ -40,8 +40,8 @@ class Ontology():
         """
 
         # compute concept ontology
-        self.codes = [row["concept_id"] for row in concept.select("concept_id").distinct().collect()]
-        self.code_to_name = {row["concept_id"]: row["concept_name"] for row in concept.select("concept_id", "concept_name").collect()}
+        self.codes = [row["concept_id"] for row in concept.select("concept_id").distinct().collect()] + list(self.SPECIAL_CODES.values())
+        self.code_to_name = {row["concept_id"]: row["concept_name"] for row in concept.select("concept_id", "concept_name").collect()} | {v:k for k,v in self.SPECIAL_CODES.items()}
         if qualifications is not None:
             qualifications_temp = qualifications.withColumn("temp", F.concat(F.col("source"), F.lit("/"), F.col("qualification")))
             self.qualifiers = list({row["temp"] for row in qualifications_temp.select("temp").collect()})
@@ -56,7 +56,7 @@ class Ontology():
         events_temp = events_temp.unionByName(
             events_comp.join(events_temp, on="code", how="leftanti")
         )
-        self.code_to_domain = {row["code"]: row["domain"] for row in events_temp.collect()}
+        self.code_to_domain = {row["code"]: row["domain"] for row in events_temp.collect()} | {v:"visit_flag" for k,v in self.SPECIAL_CODES.items()}
         self.domains = list(set(self.code_to_domain.values()))
     
     def bin_measurements(self, events):

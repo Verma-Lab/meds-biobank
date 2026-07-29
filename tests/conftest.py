@@ -123,9 +123,9 @@ def pmbb_vitals(spark, pmbb_data_dir):
 ### POST-ETL EVENTS DATA ###
 
 @pytest.fixture(scope="session")
-def meds_data_path(spark):
+def pmbb_meds_data_path(spark):
     return Path(__file__).resolve().parent.parent / "data/meds/pmbb_meds.csv"
 
 @pytest.fixture(scope="session")
-def meds_events(spark, meds_data_path):
-    return spark.read.csv(str(meds_data_path), header=True, inferSchema=True)
+def pmbb_meds_events(spark, pmbb_meds_data_path):
+    return spark.read.csv(str(pmbb_meds_data_path), header=True, inferSchema=True)
