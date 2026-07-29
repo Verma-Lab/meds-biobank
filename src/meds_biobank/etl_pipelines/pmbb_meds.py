@@ -24,6 +24,7 @@ def extract_events(df, table, use_omop_cid=True):
             Schema: |person_id|concept_id|{table_name}_start_date|...
         table (str):
             Desc: OMOP table name (e.g. "visit_occurrence", "drug_exposure")
+        use_omop_cid (boolean): whether to use standard omop concept or revert to src concept
 
     Returns:
         events (pyspark.sql.DataFrame):

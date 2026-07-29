@@ -105,7 +105,8 @@ Flags:
   - Compute conceptual ontology: code_to_domain, code_to_name, code_to_description, code_to_qualifiers, code_to_ancestors.
   - Compute msmt ontology: code_to_decile_ranges, code_to_unit
   - Compute concept rollup: rollup_map
-  - Methods to load from saved or save as pkl.
+  - Also compute lists: codes, domains, qualifications, deciles
+  - Methods to load from saved or save as json.
 3. Create a tokenizer
 
 
