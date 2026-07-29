@@ -1,15 +1,6 @@
-CUSTOM_CONCEPTS = {
-    "IsHospitalAdmission": 700000001,
-    "IsInpatientAdmission": 700000002,
-    "IsObservation": 700000003,
-    "IsEdVisit": 700000004,
-    "IsOutpatientFaceToFaceVisit": 700000005,
-    "IsVideoVisit": 700000007,
-}
-
 class Tokenizer():
-    def __init__(self, custom_concepts=CUSTOM_CONCEPTS):
-        self.custom_concepts = custom_concepts # concept_name, concept_id/code
+    def __init__(self, ontology):
+        self.ontology = ontology # concept_name, concept_id/code
         self.symbols = {
             "codes": [], # will include all omop concepts
             "bins": [], # will include bins 0-10

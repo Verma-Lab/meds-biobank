@@ -13,9 +13,13 @@ class Ontology():
             "IsOutpatientFaceToFaceVisit": 700000005,
             "IsVideoVisit": 700000007,
         }
+        self.codes = None # e.g. 1203, 1407
+        self.domains = None # e.g. measurement, drug, labs_albumin
+        self.qualifiers = None # e.g. phecodes/cardiomyopathy, ATC/class
+        self.deciles = None # vals: d0-d10
         self.code_to_domain = None # e.g. 1203: condition, 1407: labs_albumin
         self.code_to_name = None # e.g. 1203: myocardial infarction
-        self.code_to_qualifiers = None # e.g. 1203: [phecodes/cardiomyopathy, other_src/qual]
+        self.code_to_qualifiers = None # e.g. 1203: [phecodes/cardiomyopathy, ATC/class]
         self.code_to_parents = None # e.g. 1203: [1252, 242, 197]
         self.domain_to_unit = None # e.g. labs_albumin: %
         self.domain_to_decile_ranges = None # e.g. labs_albumin: d1: (min: x, max: x')
@@ -36,20 +40,23 @@ class Ontology():
         """
 
         # compute concept ontology
+        self.codes = [row["concept_id"] for row in concept.select("concept_id").distinct().collect()]
         self.code_to_name = {row["concept_id"]: row["concept_name"] for row in concept.select("concept_id", "concept_name").collect()}
         qualifications_temp = qualifications.withColumn("temp", F.concat(F.col("source"), F.lit("/"), F.col("qualification")))
+        self.qualifiers = list({row["temp"] for row in qualifications_temp.select("temp").collect()})
         qualifications_temp = qualifications_temp.groupBy("code").agg(F.collect_list("temp").alias("temp"))
-        self.code_to_qualifiers = {row["code"]: list(row["temp"]) for row in qualifications_temp.select("code", "temp")}
+        self.code_to_qualifiers = {row["code"]: list(row["temp"]) for row in qualifications_temp.select("code", "temp").collect()}
         ancestors_temp = concept_ancestor.drop(F.col("max_levels_of_separation")).filter(F.col("min_levels_of_separation") == 1)
         ancestors_temp = ancestors_temp.groupBy(F.col("descendant_concept_id")).agg(F.collect_list("ancestor_concept_id").alias("parents"))
         self.code_to_parents = {row["descendant_concept_id"]: list(row["parents"]) for row in ancestors_temp.collect()}
         events_temp = events.groupBy("code").agg(F.first("event_type").alias("domain"))
-        events_comp = concept.groupBy("concept_id").agg(F.lower(F.first("domain_id")))
+        events_comp = concept.groupBy("concept_id").agg(F.lower(F.first("domain_id")).alias("domain_id"))
         events_comp = events_comp.withColumnRenamed("concept_id", "code").withColumnRenamed("domain_id", "domain")
         events_temp = events_temp.unionByName(
             events_comp.join(events_temp, on="code", how="leftanti")
         )
         self.code_to_domain = {row["code"]: row["domain"] for row in events_temp.collect()}
+        self.domains = list(set(self.code_to_domain.values()))
     
     def bin_measurements(self, events):
         """
@@ -128,6 +135,9 @@ class Ontology():
                 "min": row["min_value"],
                 "max": row["max_value"],
             }
+        
+        # set deciles
+        self.deciles = [f"decile{i}" for i in range(11)]
     
     def load_from_disk(self, dirname):
         """
@@ -139,14 +149,21 @@ class Ontology():
             raise Exception(f"ERROR: Unable to locate path {dirname} to save ontology. Does it exist yet? (save_to_disk does not create it)")
 
         # catch error: one of the ontology files does not exist
-        if not override:
-            paths = ["special_codes", "code_to_domain", "code_to_name", "code_to_qualifiers", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
-            paths = [path += ".json" for path in paths]
-            for path in paths:
-                if not os.path.exists(os.path.join(dirname, path)):
-                    raise Exception(f"ERROR: File {path} does not exist in location {dirname}.")
+        paths = ["codes", "domains", "qualifiers", "deciles", "special_codes", "code_to_domain", "code_to_name", "code_to_qualifiers", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
+        paths = [path + ".json" for path in paths]
+        for path in paths:
+            if not os.path.exists(os.path.join(dirname, path)):
+                raise Exception(f"ERROR: File {path} does not exist in location {dirname}.")
         
         # if we get here, read the files
+        with open(os.path.join(dirname, "codes.json"), "r") as file:
+            self.codes = json.load(file)
+        with open(os.path.join(dirname, "domains.json"), "r") as file:
+            self.domains = json.load(file)
+        with open(os.path.join(dirname, "qualifiers.json"), "r") as file:
+            self.qualifiers = json.load(file)
+        with open(os.path.join(dirname, "deciles.json"), "r") as file:
+            self.deciles = json.load(file)
         with open(os.path.join(dirname, "special_codes.json"), "r") as file:
             self.SPECIAL_CODES = json.load(file)
         with open(os.path.join(dirname, "code_to_domain.json"), "r") as file:
@@ -154,11 +171,11 @@ class Ontology():
         with open(os.path.join(dirname, "code_to_name.json"), "r") as file:
             self.code_to_name = json.load(file)
         with open(os.path.join(dirname, "code_to_qualifiers.json"), "r") as file:
-            self.code_to_qualifiers = json.read(file)
+            self.code_to_qualifiers = json.load(file)
         with open(os.path.join(dirname, "code_to_parents.json"), "r") as file:
-            self.code_to_parents = json.read(file)
+            self.code_to_parents = json.load(file)
         with open(os.path.join(dirname, "domain_to_unit.json"), "r") as file:
-            self.domain_to_unit = json.read(file)
+            self.domain_to_unit = json.load(file)
         with open(os.path.join(dirname, "domain_to_decile_ranges.json"), "r") as file:
             self.domain_to_decile_ranges = json.load(file)
         with open(os.path.join(dirname, "rollup_map.json"), "r") as file:
@@ -175,13 +192,21 @@ class Ontology():
         
         # catch error: files already exist when override set to False
         if not override:
-            paths = ["special_codes", "code_to_domain", "code_to_name", "code_to_qualifiers", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
-            paths = [path += ".json" for path in paths]
+            paths = ["codes", "domains", "qualifiers", "deciles", "special_codes", "code_to_domain", "code_to_name", "code_to_qualifiers", "code_to_parents", "domain_to_unit", "domain_to_decile_ranges", "rollup_map"]
+            paths = [path + ".json" for path in paths]
             for path in paths:
                 if os.path.exists(os.path.join(dirname, path)):
                     raise Exception(f"ERROR: File {path} already exists in location {dirname} and override was set to False.")
         
         # if we get here, save the ontology
+        with open(os.path.join(dirname, "codes.json"), "w") as file:
+            json.dump(self.codes, file, indent=4)
+        with open(os.path.join(dirname, "domains.json"), "w") as file:
+            json.dump(self.domains, file, indent=4)
+        with open(os.path.join(dirname, "qualifiers.json"), "w") as file:
+            json.dump(self.qualifiers, file, indent=4)
+        with open(os.path.join(dirname, "deciles.json"), "w") as file:
+            json.dump(self.deciles, file, indent=4)
         with open(os.path.join(dirname, "special_codes.json"), "w") as file:
             json.dump(self.SPECIAL_CODES, file, indent=4)
         with open(os.path.join(dirname, "code_to_domain.json"), "w") as file:
@@ -214,19 +239,18 @@ class Ontology():
             raise Exception("ERROR: Rollup function called prior to bin_measurements.")
 
         # count raw code frequencies
-        n_ppl = events.select("person_id").distinct().count()
-        code_freq = events.groupBy("code").agg((F.count("person_id")/n_ppl).alias("freq"))
-        above_thresh = code_freq.select("code").distinct()
+        n_ppl = events.select("patient_id").distinct().count()
+        code_freq = events.groupBy("code").agg((F.countDistinct("patient_id")/n_ppl).alias("freq"))
 
         # compute rollup map
         ca_freq = concept_ancestor.drop("max_levels_of_separation")
-        ca_freq = concept_ancestor.join(
+        ca_freq = ca_freq.join(
             code_freq.select("code", "freq"),
             concept_ancestor.ancestor_concept_id == code_freq.code,
             "inner"
         ).drop(code_freq.code).withColumnRenamed("freq", "ancestor_freq")
         ca_freq = ca_freq.join(
-            cod_freq.select("code", "freq"),
+            code_freq.select("code", "freq"),
             ca_freq.descendant_concept_id == code_freq.code,
             "inner"
         ).drop(code_freq.code).withColumnRenamed("freq", "descendant_freq") # |ancestor_cid|ancestor_freq|descendant_cid|descendant_freq|min_lvls_of_sep
@@ -238,12 +262,14 @@ class Ontology():
         ).select("descendant_concept_id", "ancestor_concept_id") # |descendant_cid|target_code|
         self.rollup_map = {row["descendant_concept_id"]: row["ancestor_concept_id"] for row in rollup_map.collect()}
 
-        # drop codes from ontology mappings if they are not above threshold: do not drop special
+        # drop codes from ontology mappings and lists if they are not above threshold: do not drop special
         special_vals = set(self.SPECIAL_CODES.values())
-        below_thresh_codes = {row["code"] for row in code_freq.filter(F.col("freq")) < threshold}
+        below_thresh_codes = {row["code"] for row in code_freq.filter(F.col("freq") < threshold).collect()}
         codes_to_drop = below_thresh_codes - special_vals
         for mapping in (self.code_to_domain, self.code_to_name, self.code_to_qualifiers, self.code_to_parents):
-            if code in codes_to_drop:
+            for code in codes_to_drop:
                 mapping.pop(code, None)
+        self.codes = list(set(self.codes) - set(codes_to_drop))
+        
         
     
