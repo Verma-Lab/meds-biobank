@@ -19,9 +19,10 @@ class Tokenizer():
         for symbol in self.ontology.domains:
             symbol_to_token[symbol] = idx
             idx += 1
-        for symbol in self.ontology.qualifiers:
-            symbol_to_token[symbol] = idx
-            idx += 1
+        if self.ontology.qualifiers is not None:
+            for symbol in self.ontology.qualifiers:
+                symbol_to_token[symbol] = idx
+                idx += 1
         for symbol in self.ontology.deciles:
             symbol_to_token[symbol] = idx
             idx += 1
@@ -53,7 +54,7 @@ class Tokenizer():
             # add code token if we have a vocab slot for it: if the concept is not in vocab, lookup in rollup, then if not present here, skip
             code = event["code"]
             if code not in self.ontology.code_to_domain:
-                if code in self.ontology.rollup_map:
+                if self.ontology.rollup_map is not None and code in self.ontology.rollup_map:
                     code = self.ontology.rollup_map[code]
                 else:
                     continue
@@ -70,39 +71,82 @@ class Tokenizer():
                 visits.append(visit_idx)
             else:
                 visits.append(visit_idx)
+            last_visit_id = visit_id
 
             # for a concept with a labs_ or vitals_ domain, bin its numeric value if present and tokenize
             code_domain = self.ontology.code_to_domain[code]
-            if code_domain.startswith("labs_") or code_domain.starts_with("vitals_"):
+            if code_domain.startswith("labs_") or code_domain.startswith("vitals_"):
                 try:
-                    value = float(code["numeric_value"])
+                    value = float(event["numeric_value"])
                 except:
                     continue
                 decile_ranges = self.ontology.domain_to_decile_ranges[code_domain]
-                for bucket in decile_ranges:
+                for decile, bucket in decile_ranges.items():
                     if bucket["min"] <= value and value <= bucket["max"]:
-                        decile = bucket
                         value_token = self.symbol_to_token[f"decile{decile}"]
                         tokens.append(value_token)
                         times.append(time)
                         visits.append(visit_idx)
+                        break
 
         return tokens, times, visits
 
-    def detokenize(self, tokens):
+    def detokenize(self, tokens, times, visits):
         """
         Args:
             tokens (List<int>), times (List<timestamp>), visits (List<int>)
         Returns:
             events (List<Dict>): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id| (single patient)
         """
-        pass
+        events = []
+        for i in range(len(tokens)):
+
+            # check if current token is a decile token
+            symbol = self.token_to_symbol[tokens[i]]
+            if symbol in self.ontology.deciles:
+                # if so, modify previous event or skip if none present
+                if len(events) == 0:
+                    continue
+                previous_event = events[-1]
+                domain = previous_event["event_type"]
+                if domain not in self.ontology.domain_to_decile_ranges: # skip if domain does not actually have decile ranges (model must have hallucinated this)
+                    continue
+                min_val = self.ontology.domain_to_decile_ranges[domain][int(symbol.replace("decile", ""))]["min"]
+                max_val = self.ontology.domain_to_decile_ranges[domain][int(symbol.replace("decile", ""))]["max"]
+                val = (min_val + max_val) / 2
+                previous_event["numeric_value"] = val
+                unit = self.ontology.domain_to_unit[domain]
+                previous_event["unit"] = unit
+                continue
+
+            # fill new event if token isnt a value indicator (decile, otherwise modify previous event)
+            new_event = {
+                "patient_id": None,
+                "code": symbol,
+                "time": times[i],
+                "end": None,
+                "numeric_value": None,
+                "text_value": None,
+                "unit": None,
+                "event_type": self.ontology.code_to_domain[symbol],
+                "visit_id": visits[i]
+            }
+            events.append(new_event)
+        
+        return events
+
 
 class MetaTokenizer():
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
+        self.symbol_to_token = None
+        self.token_to_symbol = None
     def build_vocab(self):
+        # TODO: add time passage tokens
+        # TODO: add BOV/EOV tokens
+        # TODO: add BOS, PAD tokens (these are not used until the collator)
         pass
+        
     def tokenize(self, events):
         """
         Args:
@@ -110,7 +154,7 @@ class MetaTokenizer():
         Returns:
             tokens (List<int>)
         """
-        pass
+        pas
     def detokenize(self, tokens):
         """
         Args:
