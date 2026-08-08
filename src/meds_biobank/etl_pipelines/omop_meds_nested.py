@@ -18,9 +18,6 @@ def extract_events(df, table):
             Schema: |person_id|concept_id|{table_name}_start_date|...
         table (str):
             Desc: OMOP table name (e.g. "visit_occurrence", "drug_exposure")
-        concepts (pyspark.sql.DataFrame):
-            Desc: OMOP concepts table
-            Schema: |concept_id|vocabulary_id|concept_code|...
 
     Returns:
         events (pyspark.sql.DataFrame):

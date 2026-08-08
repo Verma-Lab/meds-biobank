@@ -12,7 +12,8 @@
   - [ETL](#etl)
     - [OMOP MEDS-ETL 0.1.3 (Nested)](#-omop-meds-etl-013)
     - [OMOP MEDS-ETL 0.3.11 (Flat)](#-omop-meds-etl-0311)
-  - [Ontology Transforms](#ontology-transforms)
+  - [Ontologies](#ontologies)
+  - [Tokenizers](#tokenizers)
 
 ---
 
@@ -24,23 +25,21 @@
 
 | | |
 |---|---|
-| **Path** | `/meds-biobank/src/meds-biobank/etl_pipelines/omop_meds_nwsted.py` |
+| **Path** | `/meds-biobank/src/meds-biobank/etl_pipelines/omop_meds_nested.py` |
 | **Description** | Re-implementation of `src/meds_etl/omop.py` from `meds_etl` v0.1.3. Converts OMOP v5.4/5.3 → MEDS v0.1.3 (nested format). Use with CLMBR-T-base / FEMR v0.2.3. |
 
 **Workflow**
 1. Extract all events
-2. Prune / deduplicate patient event streams
-3. Convert event streams into nested patient representations
+2. Gather into one df
+3. Prune / deduplicate patient event streams
+4. Post-process value field and concept code field.
+5. Convert event streams into nested patient representations
 
 **Differences from source**
 Pruning (`delta_encode`, `remove_nones`) happens *before* finalizing the MEDS mapping.
 
 **Supported Tables**
 `person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `death`
-
-**Options**
-- Pre-ETL of measurements: value/unit conversion + separation into labs and vitals
-  - Sub-options: *where possible* vs. *drop messy*
 
 ---
 
@@ -53,8 +52,10 @@ Pruning (`delta_encode`, `remove_nones`) happens *before* finalizing the MEDS ma
 
 **Workflow**
 1. Extract all events
-2. Prune / deduplicate patient event streams
-3. Order event streams by patient, time
+2. Gather into one df
+3. Prune / deduplicate patient event streams
+4. Post-process value field and concept code field.
+5. Order event streams by patient, time
 
 **Differences from source**
 Pruning (`delta_encode`, `remove_nones`) happens *within the ETL*, rather than as part of the tokenizer (FEMR 0.2.3 `transforms` sub-module).
@@ -62,27 +63,36 @@ Pruning (`delta_encode`, `remove_nones`) happens *within the ETL*, rather than a
 **Supported Tables**
 `person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `death`
 
-**Options**
-- Pre-ETL of measurements: value/unit conversion + separation into labs and vitals
-  - Sub-options: *where possible* vs. *drop messy*
-
 ---
 
 #### PMBB OMOP MEDS-ETL
 
-**Specification**
-Outputs in the format:
-```bash
-|patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-```
-Special Notes:
-1. code is an OMOP concept id. Unless explicitly specified via boolean flag, it is the standardized OMOP concept id.
-2. time is the time of event, end is optional
-3. numeric_value and unit contain ETL'd values for a large subset of measurements pre-extracted into labs_ and vitals_ tables with value_converted and unit_converted columns
-4. event_type contains the source OMOP domain for the table (e.g. measurement, procedure, etc.) EXCEPT for labs and vitals which are formatted as "labs_"/"vitals_" + name e.g. "labs_albumin"
+| | |
+|---|---|
+| **Path** | `/meds-biobank/src/meds-biobank/etl_pipelines/pmbb_meds.py` |
+| **Description** | OMOP -> MEDS ETL for PMBB in particular. Converts PMBB OMOP v5.4/5.3 → MEDS|
 
-Flags:
-1. If the OMOP extract only yields measurements, there is (will be) separate ETL logic in /transforms to transform the data into the right form.
+**Workflow**
+1. Extract all events
+2. Gather into one df
+3. Prune / deduplicate patient event streams
+4. Post-process value fields
+5. Order event streams by patient, time
+
+**Format**
+- |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+- patient_id: id of the patient
+- code: OMOP concept id. Unless explicitly specified via boolean flag, use standardized OMOP concept id. Otherwise try to use source concept id.
+- time: time of event. coalesce in order (start datetime, start date, datetime date)
+- end: (optional) end time of event. Coalesce in order (end datetime, end date).
+- numeric_value: contains ETL'd value from value_converted col for a large subset of measurements pre-extracted into labs_ and vitals_ tables
+- text_value: should be empty (check)
+- unit: contains ETL'd value from unit_converted col for a large subset of measurements pre-extracted into labs_ and vitals_ tables
+- event_type: source OMOP domain for the table contianing the event (e.g. measurement, procedure, etc.) EXCEPT for labs and vitals which are formatted as "labs_"/"vitals_" + name e.g. "labs_albumin"
+- visit_id: id of visit that generated the event
+
+**Supported Tables**
+`person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `labs_/vitals_` ·  `death`
 
 ---
 
