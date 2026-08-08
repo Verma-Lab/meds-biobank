@@ -1,0 +1,528 @@
+import pyspark.sql.functions as F
+from pyspark.sql import Window
+
+OMOP_BIRTH = 4083587
+OMOP_DEATH = 4306655
+OMOP_INPATIENT = 9201
+CUSTOM_CONCEPTS = {
+    "IsHospitalAdmission": 700000001,
+    "IsInpatientAdmission": 700000002,
+    "IsObservation": 700000003,
+    "IsEdVisit": 700000004,
+    "IsOutpatientFaceToFaceVisit": 700000005,
+    "IsVideoVisit": 700000007,
+}
+
+def extract_events(df, table, use_omop_cid=True):
+    """
+    Convert an OMOP table into an unordered MEDS-DataSchema-LIKE table in flat format, containing all events
+    Reads: visit_occurrence (admission and discharge), visit_supplement, drug_exposure, condition_occurrence, observation, procedure_occurrence, measurement, labs_, vitals_, death, person
+
+    Args:
+        df (pyspark.sql.DataFrame):
+            Desc: OMOP events table
+            Schema: |person_id|concept_id|{table_name}_start_date|...
+        table (str):
+            Desc: OMOP table name (e.g. "visit_occurrence", "drug_exposure")
+        use_omop_cid (boolean): whether to use standard omop concept or revert to src concept
+
+    Returns:
+        events (pyspark.sql.DataFrame):
+            Desc: a MEDS table in flat format w/ metadata expanded, containing all events
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|, |measurement_id| (drop later)
+            Notes:
+                code = concept_id (NOT vocabulary_id/code)
+    """
+
+    # fix source val cols
+    for col in df.columns:
+        if col.endswith("_source_value"):
+            df = df.withColumn(col, F.col(col).cast("string"))
+
+    # all source tables, hash patient id
+    events = df.withColumn("patient_id", F.crc32(F.col("person_id").cast("string"))) # hash to patient id
+
+    # person source table
+    if table == "person":
+
+        # get time as birthdate
+        events = events.withColumn("time", F.to_timestamp(F.col("birth_datetime")))
+
+        # get birth events
+        birth_events = (
+            events
+            .withColumn("concept_id", F.lit(OMOP_BIRTH))
+            .withColumn("omop_concept_id", F.lit(OMOP_BIRTH))
+            .withColumn("event_type", F.lit("birth"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+        )
+
+        # get demographic events: gender
+        gender_events = (
+            events
+            .filter(F.col("gender_concept_id") != 0)
+            .withColumn("omop_concept_id", F.col("gender_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("gender_source_concept_id") != 0, F.col("gender_source_concept_id"))
+                    .otherwise(F.col("gender_concept_id"))
+                )
+            )
+            .withColumn("event_type", F.lit("gender"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+        )
+
+        # get demographic events: race
+        race_events = (
+            events
+            .filter(F.col("race_concept_id") != 0)
+            .withColumn("omop_concept_id", F.col("race_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("race_source_concept_id") != 0, F.col("race_source_concept_id"))
+                    .otherwise(F.col("race_concept_id"))
+                )
+            )
+            .withColumn("event_type", F.lit("race"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+        )
+
+        # get demographic events: ethnicity
+        ethnicity_events = (
+            events
+            .filter(F.col("ethnicity_concept_id") != 0)
+            .withColumn("omop_concept_id", F.col("ethnicity_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("ethnicity_source_concept_id") != 0, F.col("ethnicity_source_concept_id"))
+                    .otherwise(F.col("ethnicity_concept_id"))
+                )
+            )
+            .withColumn("event_type", F.lit("ethnicity"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+        )
+
+        # form events
+        events = birth_events.union(gender_events).union(race_events).union(ethnicity_events)
+    
+    # death source table
+    elif table == "death":
+
+        # get death events
+        events = (
+            events
+            .withColumn("concept_id", F.lit(OMOP_DEATH))
+            .withColumn("omop_concept_id", F.lit(OMOP_DEATH))
+            .withColumn("time", F.to_timestamp(F.col("death_date")))
+            .withColumn("event_type", F.lit("death"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+        )
+
+    # visit_occurrence source table
+    elif table == "visit_occurrence":
+        
+        # get visit (start) events
+        admission_events = (
+            events
+            .withColumn("time", F.to_timestamp(F.col("visit_start_datetime")))
+            .withColumn("omop_concept_id", F.col("visit_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("visit_source_concept_id") != 0, F.col("visit_source_concept_id"))
+                    .when(F.col("visit_concept_id") != 0, F.col("visit_concept_id"))
+                    .otherwise(F.lit(8))
+                )
+            )
+            .withColumn("event_type", F.lit("visit_admission"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+        )
+
+        # get visit discharge events
+        discharge_events = (
+            events
+            .filter(F.col("discharge_to_concept_id").isNotNull())
+            .filter(F.col("discharge_to_concept_id") != 0)
+            .withColumn("omop_concept_id", F.col("discharge_to_concept_id"))
+            .withColumnRenamed("discharge_to_concept_id", "concept_id")
+            .withColumn("time", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+            .filter(F.col("time").isNotNull())
+            .withColumn("event_type", F.lit("visit_discharge"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+        )
+
+        # union
+        events = admission_events.unionByName(discharge_events, allowMissingColumns=False)
+    
+    # handle visit occurrence supplement
+    elif table == "visit_occurrence_supplement":
+        flags = list(CUSTOM_CONCEPTS.keys())
+        stack_args = ", ".join(f"'{c}', {c}" for c in flags)
+        mapping_expr = F.create_map([F.lit(x) for pair in CUSTOM_CONCEPTS.items() for x in pair])
+        events = (
+            events
+            .withColumn("time", F.to_timestamp(F.col("visit_start_datetime")))
+            .selectExpr("*", f"stack({len(flags)}, {stack_args}) as (code, value)")
+            .drop(*flags)
+            .filter(F.col("value") == 1)
+            .withColumn("event_type", F.lit("visit_flag"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .select("patient_id", "time", "code", "event_type", "visit_id")
+        )
+    
+    # drug_occurrence table
+    elif table == "drug_exposure":
+
+        # get drug events
+        events = (
+            events
+            .withColumn("time", F.coalesce(F.col("drug_exposure_start_datetime"), F.to_timestamp(F.col("drug_exposure_start_date"))))
+            .withColumn("omop_concept_id", F.col("drug_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("drug_source_concept_id") != 0, F.col("drug_source_concept_id"))
+                    .otherwise(F.col("drug_concept_id"))
+                )
+            )
+            .filter(F.col("concept_id") != 0)
+            .withColumn("event_type", F.lit("drug"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("end", F.coalesce(F.col("drug_exposure_end_datetime"), F.to_timestamp(F.col("drug_exposure_end_date"))))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+        )
+    
+    # condition table
+    elif table == "condition_occurrence":
+
+        # get condition events
+        events = (
+            events
+            .withColumn("time", F.coalesce(F.col("condition_start_datetime"), F.to_timestamp(F.col("condition_start_date"))))
+            .withColumn("omop_concept_id", F.col("condition_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("condition_source_concept_id") != 0, F.col("condition_source_concept_id"))
+                    .otherwise(F.col("condition_concept_id"))
+                )
+            )
+            .filter(F.col("concept_id") != 0)
+            .withColumn("event_type", F.lit("condition"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("end", F.coalesce(F.col("condition_end_datetime"), F.to_timestamp(F.col("condition_end_date"))))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+        )
+    
+    # procedure table
+    elif table == "procedure_occurrence":
+
+        # get procedure events
+        events = (
+            events
+            .withColumn("time", F.coalesce(F.col("procedure_datetime"), F.to_timestamp(F.col("procedure_date"))))
+            .withColumn("omop_concept_id", F.col("procedure_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("procedure_source_concept_id") != 0, F.col("procedure_source_concept_id"))
+                    .otherwise(F.col("procedure_concept_id"))
+                )
+            )
+            .filter(F.col("concept_id") != 0)
+            .withColumn("event_type", F.lit("procedure"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type", "visit_id")
+        )
+    
+    # observation table
+    elif table == "observation":
+
+        # get observation events
+        events = (
+            events.withColumn("time", F.coalesce(F.col("observation_datetime"), F.to_timestamp(F.col("observation_date"))))
+            .withColumn("omop_concept_id", F.col("observation_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("observation_source_concept_id") != 0, F.col("observation_source_concept_id"))
+                    .otherwise(F.col("observation_concept_id"))
+                )
+            )
+            .filter(F.col("concept_id") != 0)
+            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_as_string")))
+            .withColumn(
+                "value",
+                (
+                    F.when(F.col("value").isNotNull(), F.col("value"))
+                    .when(
+                        (F.col("value_as_concept_id").isNotNull()) & (F.col("value_as_concept_id") != 0) & (F.col("observation_source_concept_id") == 0) & (F.col("observation_source_value") != ""),
+                        F.concat(F.lit("SOURCE_CODE/"), F.col("observation_source_value"))
+                    )
+                    .otherwise(F.lit(None))
+                )
+            )
+            .withColumn("event_type", F.lit("observation"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("unit", F.col("unit_source_value"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit")
+        )
+
+    elif table == "measurement":
+
+        # dedup
+        events = events.dropDuplicates(["measurement_id"])
+
+        # get measurement events
+        events = (
+            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+            .withColumn("omop_concept_id", F.col("measurement_concept_id"))
+            .withColumn(
+                "concept_id",
+                (
+                    F.when(F.col("measurement_source_concept_id") != 0, F.col("measurement_source_concept_id"))
+                    .otherwise(F.col("measurement_concept_id"))
+                )
+            )
+            .filter(F.col("concept_id") != 0)
+            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value")))
+            .withColumn(
+                "value",
+                (
+                    F.when(F.col("value").isNotNull(), F.col("value"))
+                    .when(
+                        (F.col("value_as_concept_id").isNotNull()) & (F.col("value_as_concept_id") != 0) & (F.col("measurement_source_concept_id") == 0) & (F.col("measurement_source_value") != ""),
+                        F.concat(F.lit("SOURCE_CODE/"), F.col("measurement_source_value"))
+                    )
+                    .otherwise(F.lit(None))
+                )
+            )
+            .withColumn("event_type", F.lit("measurement"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("unit", F.col("unit_source_value"))
+            .withColumn("measurement_id", F.col("measurement_id"))
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit", "measurement_id")
+        )
+
+    # undefined table
+    else:
+        raise Exception(f"Table {table} not supported")
+
+    # catch missing cols
+    catch_cols = ["value", "end", "event_type", "visit_id", "unit", "measurement_id"]
+    for col in catch_cols:
+        if col not in events.columns:
+            events = events.withColumn(col, F.lit(None))
+    
+    # handle concept_id
+    if "code" not in events.columns:
+        if use_omop_cid:
+            events = events.withColumn("code", F.col("omop_concept_id")).drop("omop_concept_id", "concept_id")
+        else:
+            events = events.withColumn("code", F.col("concept_id")).drop("omop_concept_id", "concept_id")
+
+    # cast visit id to correct type
+    events = events.withColumn("visit_id", F.col("visit_id").cast("long"))
+        
+    return events
+
+def gather_events(event_dfs, measurement_events):
+    """
+    Desc:
+        Compile separate events tables into a single table
+        event_dfs is a list of dfs which are events acc. schema
+        event_dfs EXCLUDES measurements
+        if labs or vitals are present, only add rows from measurement that are not already in them, as their values are higher-quality
+    Args:
+        event_dfs (List<pyspark.sql.DataFrame>):
+            Desc: 
+            Df Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|, |measurement_id| (drop later)
+    Returns:
+        all_events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+    """
+
+    # handle case with only meas events
+    if len(event_dfs) == 0:
+        return measurement_events
+
+    # handle non-measurement event dfs
+    final_df = event_dfs[0]
+    for df in event_dfs[1:]:
+        final_df = final_df.unionByName(df, allowMissingColumns=False)
+    
+    # add measurements if they are present
+    if measurement_events != None:
+        used_mid = final_df.select("measurement_id").distinct()
+        measurement_events = measurement_events.join(used_mid, "measurement_id", "left_anti") # drop measurements covered in labs and vitals
+        final_df = final_df.unionByName(measurement_events, allowMissingColumns=False)
+    
+    return final_df.drop("measurement_id")
+
+
+def prune_events(events):
+    """
+    Args:
+        events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+    Returns:
+        pruned_events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+    """
+    # remove nones
+    w = Window.partitionBy("patient_id", "code", F.to_date("time"))
+    pruned_events = (
+        events
+        .withColumn(
+            "_has_nonull",
+            F.max(F.col("value").isNotNull().cast("int")).over(w)
+        )
+        .filter(
+            ~(
+                (F.col("_has_nonull") == 1) & (F.col("value").isNull())
+            )
+        )
+        .drop("_has_nonull")
+    )
+    
+    # delta encode
+    w = Window.partitionBy("patient_id", "code").orderBy("time")
+    pruned_events = (
+        pruned_events
+        .withColumn("_last_time", F.lag("time").over(w))
+        .withColumn("_last_value", F.lag("value").over(w))
+        .filter(
+            ~(
+                (F.col("value").eqNullSafe(F.col("_last_value"))) & (F.to_date(F.col("time")).eqNullSafe(F.to_date(F.col("_last_time"))))
+            )
+        )
+        .drop("_last_time", "_last_value")
+    )
+
+    return pruned_events
+
+def post_process_events(events):
+    """
+    Args:
+        events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+    Returns:
+        processed_events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+    """
+    events = (
+        events
+        .withColumn("numeric_value", F.expr("try_cast(value AS FLOAT)"))
+        .withColumn("text_value", F.when(F.expr("try_cast(value AS FLOAT)").isNull(), F.col("value")).otherwise(F.lit(None)))
+        .drop("value")
+    )
+    return events
+
+def format_events(events):
+    """
+    Args:
+        events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+    Returns:
+        formatted_events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+    """
+    return events.orderBy("patient_id", "time")
+
+if __name__ == "__main__":
+
+    """
+    create example events data for transforms and tokenizer tests from test data for etl process
+    """
+    
+    # imports
+    from pathlib import Path
+    from pyspark.sql import SparkSession
+    import shutil
+
+    # create spark session
+    spark = (
+        SparkSession.builder
+        .master("local[2]")
+        .appName("meds-biobank-etl")
+        .config("spark.sql.shuffle.partitions", "2")
+        .getOrCreate()
+    )
+
+    # set data dir
+    data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
+
+    # read data tables
+    tables = [
+        spark.read.csv(str(data_dir / "condition_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "death.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "drug_exposure.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True)
+    ]
+    labs = [
+        spark.read.csv(str(data_dir / "labs_creatinine.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "labs_glucose.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "labs_hba1c.csv"), header=True, inferSchema=True)
+    ]
+    vitals = [
+        spark.read.csv(str(data_dir / "vitals_heart_rate.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "vitals_spo2.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "vitals_systolic_bp.csv"), header=True, inferSchema=True)
+    ]
+    measurement = spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+
+    # record table names
+    table_names = ["condition_occurrence", "death", "drug_exposure", "observation", "person", "procedure_occurrence", "visit_occurrence"]
+    lab_names = ["labs_creatinine", "labs_glucose", "labs_hba1c"]
+    vital_names = ["vitals_heart_rate", "vitals_spo2", "vitals_systolic_bp"]
+
+    # extract events
+    event_dfs = []
+    for table, name in zip(tables, table_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    for table, name in zip(labs, lab_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    for table, name in zip(vitals, vital_names):
+        result = extract_events(table, name)
+        event_dfs.append(result)
+    
+    # extract measurement events
+    measurement_events = extract_events(measurement, "measurement")
+
+    # gather events together
+    gathered_events = gather_events(event_dfs, measurement_events)
+
+    # prune events
+    pruned_events = prune_events(gathered_events)
+
+    # post process events
+    post_processed_events = post_process_events(pruned_events)
+
+    # format events
+    formatted_events = format_events(post_processed_events)
+
+    # show
+    print(formatted_events.limit(25).toPandas())
+
+    # set write dir
+    write_dir = "/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv"
+    formatted_events.toPandas().to_csv(str(write_dir), index=False)

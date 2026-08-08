@@ -96,43 +96,41 @@ Pruning (`delta_encode`, `remove_nones`) happens *within the ETL*, rather than a
 
 ---
 
+#### Stable OMOP MEDS-ETL
+
+| | |
+|---|---|
+| **Path** | `/meds-biobank/src/meds-biobank/etl_pipelines/omop_meds.py` |
+| **Description** | Modern custom OMOP -> MEDS ETL. Minor modifications on OMOP MEDS-ETL 0.3.11.
+
+**Workflow**
+1. Extract all events
+2. Gather into one df
+3. Prune / deduplicate patient event streams
+4. Post-process value fields
+5. Order event streams by patient, time
+
+**Format**
+- |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+- patient_id: id of the patient
+- code: OMOP concept id. Unless explicitly specified via boolean flag, use standardized OMOP concept id. Otherwise try to use source concept id.
+- time: time of event. coalesce in order (start datetime, start date, datetime date)
+- end: (optional) end time of event. Coalesce in order (end datetime, end date).
+- numeric_value: contains source value cast to numeric if possible
+- text_value: contains source value as string if numeric cast fails
+- unit: contains source unit
+- event_type: source OMOP domain for the table contianing the event (e.g. measurement, procedure, etc.)
+- visit_id: id of visit that generated the event
+
+**Supported Tables**
+`person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `death`
+
+---
+
+### Ontologies
+
+---
+
 ### Tokenizers
 
 ---
-
-### Transforms
-
----
-
-## PMBB Workflow
-
-1. Run etl_pipelines/pmbb_meds.py on raw OMOP tables to compute the ordered patient meds dataframe in the schema:
-```bash
-|patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-```
-2. Create an ontology
-  - Read concept, concept_ancestor, classifications.
-  - Compute conceptual ontology: code_to_domain, code_to_name, code_to_description, code_to_qualifiers, code_to_ancestors.
-  - Compute msmt ontology: code_to_decile_ranges, code_to_unit
-  - Compute concept rollup: rollup_map
-  - Also compute lists: codes, domains, qualifications, deciles
-  - Methods to load from saved or save as json.
-3. Create a tokenizer
-
-
-- Create a tokenizer
-  - This will take an ontology and assign token ids to all codes, deciles, qualifiers, and domains
-  - It will take a raw MEDS patient and output a token sequence, time sequence, and visit index sequence.
-    - Rollout for measurements
-    - Optional: ontology rollout, qualifier rollout, domain rollout
-  - It will take a token sequence, time sequence, and visit index sequence and output a raw MEDS patient.
-    - Random assignment of patient id
-- Create a tokenizer wrapper
-  - This will take a tokenizer and assign extra token ids for time passage, meta-annotations (BOS/EOS/BOV/EOV), 
-  - It will take a token sequence, time sequence, and visit index sequence and output a pure token sequence
-  - It will take a pure token sequence and output a token sequence, time sequence, and visit index sequence
-    - Recognize BOS, EOS, PAD
-    - Detect birth event and assign time = 0, otherwise first event is time = 0
-    - Detect time passage tokens, BOV/EOV tokens, compute sequences
-- Optional: create a language tokenizer
-  - This will take a pure token sequence and convert it to a pure language sequence along with a mapping of indices in the string sequence to token id's
