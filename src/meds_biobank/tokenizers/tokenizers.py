@@ -1,4 +1,7 @@
 class Tokenizer():
+
+    # TODO: rework given upstream changes to standardization/etl/ontology
+
     def __init__(self, ontology, ontology_rollout=False, domain_rollout=False, qualifier_rollout=False):
         self.ontology = ontology # ontology object
         self.ontology_rollout = ontology_rollout # whether to use ontology rollout

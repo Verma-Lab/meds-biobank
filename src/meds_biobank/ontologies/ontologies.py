@@ -4,6 +4,9 @@ import json
 import os
 
 class Ontology():
+    
+    # TODO: rework given upstream changes to standardization/etl
+
     def __init__(self):
         self.SPECIAL_CODES = {
             "IsHospitalAdmission": 700000001,
@@ -31,7 +34,7 @@ class Ontology():
             concept (pyspark.sql.DataFrame): |concept_id|metadata|
             concept_ancestor (pyspark.sql.DataFrame): |ancestor_concept_id|descendant_concept_id|min_levels_of_separation|max_levels_of_separation|
             qualifications (pyspark.sql.DataFrame): |code|qualification|source|
-            events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|decile_value|unit|event_type|visit_id|
+            events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
         Compute:
             - code_to_domain: maps code to domain
             - code_to_name: maps code to name
@@ -59,10 +62,14 @@ class Ontology():
         self.code_to_domain = {row["code"]: row["domain"] for row in events_temp.collect()} | {v:"visit_flag" for k,v in self.SPECIAL_CODES.items()}
         self.domains = list(set(self.code_to_domain.values()))
     
+    def normalize_measurements(self, events):
+        # for each measurement concept, label by lab/vital and convert value and unit to standard scale if possible, fallback if not
+        pass
+    
     def bin_measurements(self, events):
         """
         Args:
-            events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|decile_value|unit|event_type|visit_id|
+            events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
         Compute:
             - domain_to_decile_ranges: maps domain and decile bin d0-10 to min/max
             - domain_to_unit: maps domain to unit used for decile bins
