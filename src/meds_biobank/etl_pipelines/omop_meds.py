@@ -28,12 +28,12 @@ def extract_events(df, table):
     Returns:
         events (pyspark.sql.DataFrame):
             Desc: a MEDS table in flat format w/ metadata expanded, containing all events
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|, |measurement_id| (drop later)
+            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
             Notes:
                 code = concept_id (NOT vocabulary_id/code)
     """
 
-    # TODO: create standardization logic
+    # TODO: create standardization logic, phase out measurement_id
 
     # fix source val cols
     for col in df.columns:
@@ -225,8 +225,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("measurement"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("unit", F.col("unit_source_value"))
-            .withColumn("measurement_id", F.col("measurement_id"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit", "measurement_id")
+            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit")
         )
 
     # undefined table
@@ -248,7 +247,7 @@ def extract_events(df, table):
         
     return events
 
-def gather_events(event_dfs, measurement_events):
+def gather_events(event_dfs):
     """
     Desc:
         Compile separate events tables into a single table
@@ -265,22 +264,16 @@ def gather_events(event_dfs, measurement_events):
             Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
     """
 
-    # handle case with only meas events
+    # handle error case
     if len(event_dfs) == 0:
-        return measurement_events
+        raise Exception("ERROR: No tables to join in gather_events()")
 
-    # handle non-measurement event dfs
+    # handle all event dfs
     final_df = event_dfs[0]
     for df in event_dfs[1:]:
         final_df = final_df.unionByName(df, allowMissingColumns=False)
     
-    # add measurements if they are present
-    if measurement_events != None:
-        used_mid = final_df.select("measurement_id").distinct()
-        measurement_events = measurement_events.join(used_mid, "measurement_id", "left_anti") # drop measurements covered in labs and vitals
-        final_df = final_df.unionByName(measurement_events, allowMissingColumns=False)
-    
-    return final_df.drop("measurement_id")
+    return final_df
 
 
 def prune_events(events):
@@ -337,7 +330,7 @@ def post_process_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
-    events = (
+    events = ( # TODO: replace with pyspark sql pattern (avoid SQL injections)
         events
         .withColumn("numeric_value", F.expr("try_cast(value AS FLOAT)"))
         .withColumn("text_value", F.when(F.expr("try_cast(value AS FLOAT)").isNull(), F.col("value")).otherwise(F.lit(None)))
@@ -378,6 +371,7 @@ if __name__ == "__main__":
         .getOrCreate()
     )
 
+    # TODO: add yaml/env and supress hard-coded paths
     # set data dir
     data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
 

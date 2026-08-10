@@ -5,7 +5,7 @@ import os
 
 class Ontology():
     
-    # TODO: rework given upstream changes to standardization/etl
+    # TODO: rework given upstream changes to standardization/etl, move codes to a global config file
 
     def __init__(self):
         self.SPECIAL_CODES = {
@@ -209,6 +209,7 @@ class Ontology():
                 if os.path.exists(os.path.join(dirname, path)):
                     raise Exception(f"ERROR: File {path} already exists in location {dirname} and override was set to False.")
         
+        # TODO: create helper/lib and move this
         # if we get here, save the ontology
         with open(os.path.join(dirname, "codes.json"), "w") as file:
             json.dump(self.codes, file, indent=4)
@@ -246,6 +247,7 @@ class Ontology():
             • Detect concepts below threshold wrt patients. See if there is a parent above threshold. If so, rollup. Drop concepts still below threshold.
         """
 
+        #TODO: why not try/execpt block here???
         # catch error
         if self.code_to_domain is None:
             raise Exception("ERROR: Rollup function called prior to compute_concept_ontology.")
@@ -306,6 +308,7 @@ if __name__ == "__main__":
         .getOrCreate()
     )
 
+    #TODO: move to YAML!!!!
     # read concept, concept_ancestor, qualifications, and events
     events = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv", header=True, inferSchema=True)
     concept = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept.csv", header=True, inferSchema=True)
