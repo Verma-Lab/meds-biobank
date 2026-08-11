@@ -29,22 +29,24 @@
 
 ### Standardizers
 
-Talk something about standarizers here.
-
-For more here for more [docs](docs/standardizers.md)
+Docs: [docs](docs/standardizers.md)
 
 ---
 
 ### ETL
 
-For more here for more [docs](docs/etl_pipelines.md)
+Docs: [docs](docs/etl_pipelines.md)
 
 ---
 
-See here for more [docs](docs/ontologies.md)
+### Ontologies
+
+Docs: [docs](docs/ontologies.md)
 
 ---
 
 ### Tokenizers
+
+Docs: [docs](docs/tokenizers.md)
 
 ---
