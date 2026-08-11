@@ -11,9 +11,7 @@
 - [Diagram](#diagram)
 - [Features](#features)
   - [Standardizers](#standardizers)
-  - [ETL](#etl)
-    - [OMOP MEDS-ETL 0.1.3 (Nested)](#-omop-meds-etl-013)
-    - [OMOP MEDS-ETL 0.3.11 (Flat)](#-omop-meds-etl-0311)
+  - [ETL_Pipelines](#etl_pipelines)
   - [Ontologies](#ontologies)
   - [Tokenizers](#tokenizers)
 
@@ -33,7 +31,7 @@ Docs: [docs](docs/standardizers.md)
 
 ---
 
-### ETL
+### ETL_Pipelines
 
 Docs: [docs](docs/etl_pipelines.md)
 
