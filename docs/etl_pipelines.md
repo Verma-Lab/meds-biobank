@@ -136,6 +136,8 @@ Modern custom OMOP -> MEDS ETL. Minor modifications on OMOP MEDS-ETL 0.3.11.
 from pathlib import Path
 from pyspark.sql import SparkSession
 import shutil
+import os
+from dotenv import load_dotenv
 
 # create spark session
 spark = (
@@ -147,7 +149,8 @@ spark = (
 )
 
 # set data dir
-data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
+load_dotenv()
+data_dir = Path(__file__).resolve().parents[3] / os.environ["PMBB_OMOP_DATA_DIR"]
 
 # read data tables
 tables = [
