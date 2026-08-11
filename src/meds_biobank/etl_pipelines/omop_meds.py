@@ -1,13 +1,14 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 from meds_biobank import concepts
+from meds_biobank.standardizers.standardizers import standardize
 
 OMOP_BIRTH = concepts.OMOP_BIRTH
 OMOP_DEATH = concepts.OMOP_DEATH
 OMOP_INPATIENT = concepts.OMOP_INPATIENT
 CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
-def extract_events(df, table):
+def extract_events(df, table, measurements_prestandardized=True):
     """
     Convert an OMOP table into an unordered MEDS-DataSchema-LIKE table in flat format, containing all events
     Reads: visit_occurrence (admission and discharge), visit_supplement, drug_exposure, condition_occurrence, observation, procedure_occurrence, measurement, labs_, vitals_, death, person
@@ -27,7 +28,7 @@ def extract_events(df, table):
                 code = concept_id (NOT vocabulary_id/code)
     """
 
-    # TODO: create standardization logic, phase out measurement_id
+    # TODO: add standardization logic
 
     # fix source val cols
     for col in df.columns:
@@ -48,7 +49,7 @@ def extract_events(df, table):
             events
             .withColumn("concept_id", F.lit(OMOP_BIRTH))
             .withColumn("event_type", F.lit("birth"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+            .select("patient_id", "time", "concept_id", "event_type")
         )
 
         # get demographic events: gender
@@ -57,7 +58,7 @@ def extract_events(df, table):
             .filter(F.col("gender_concept_id") != 0)
             .withColumn("concept_id", F.col("gender_concept_id"))
             .withColumn("event_type", F.lit("gender"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+            .select("patient_id", "time", "concept_id", "event_type")
         )
 
         # get demographic events: race
@@ -66,7 +67,7 @@ def extract_events(df, table):
             .filter(F.col("race_concept_id") != 0)
             .withColumn("concept_id", F.col("race_concept_id"))
             .withColumn("event_type", F.lit("race"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+            .select("patient_id", "time", "concept_id", "event_type")
         )
 
         # get demographic events: ethnicity
@@ -75,7 +76,7 @@ def extract_events(df, table):
             .filter(F.col("ethnicity_concept_id") != 0)
             .withColumn("concept_id", F.col("ethnicity_concept_id"))
             .withColumn("event_type", F.lit("ethnicity"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+            .select("patient_id", "time", "concept_id", "event_type")
         )
 
         # form events
@@ -90,7 +91,7 @@ def extract_events(df, table):
             .withColumn("concept_id", F.lit(OMOP_DEATH))
             .withColumn("time", F.to_timestamp(F.col("death_date")))
             .withColumn("event_type", F.lit("death"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type")
+            .select("patient_id", "time", "concept_id", "event_type")
         )
 
     # visit_occurrence source table
@@ -110,7 +111,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("visit_admission"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+            .select("patient_id", "time", "concept_id", "end", "event_type", "visit_id")
         )
 
         # get visit discharge events
@@ -124,7 +125,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("visit_discharge"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+            .select("patient_id", "time", "concept_id", "end", "event_type", "visit_id")
         )
 
         # union
@@ -158,7 +159,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("drug"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("end", F.coalesce(F.col("drug_exposure_end_datetime"), F.to_timestamp(F.col("drug_exposure_end_date"))))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+            .select("patient_id", "time", "concept_id", "end", "event_type", "visit_id")
         )
     
     # condition table
@@ -173,7 +174,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("condition"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("end", F.coalesce(F.col("condition_end_datetime"), F.to_timestamp(F.col("condition_end_date"))))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "end", "event_type", "visit_id")
+            .select("patient_id", "time", "concept_id", "end", "event_type", "visit_id")
         )
     
     # procedure table
@@ -187,7 +188,7 @@ def extract_events(df, table):
             .filter(F.col("concept_id") != 0)
             .withColumn("event_type", F.lit("procedure"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "event_type", "visit_id")
+            .select("patient_id", "time", "concept_id", "event_type", "visit_id")
         )
     
     # observation table
@@ -202,7 +203,7 @@ def extract_events(df, table):
             .withColumn("event_type", F.lit("observation"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .withColumn("unit", F.col("unit_source_value"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit")
+            .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
         )
 
     elif table == "measurement":
@@ -210,17 +211,33 @@ def extract_events(df, table):
         # dedup
         events = events.dropDuplicates(["measurement_id"])
 
-        # get measurement events
-        events = (
-            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-            .withColumn("concept_id", F.col("measurement_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
-            .withColumn("event_type", F.lit("measurement"))
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("unit", F.col("unit_source_value"))
-            .select("patient_id", "time", "omop_concept_id", "concept_id", "value", "event_type", "visit_id", "unit")
-        )
+        if not measurements_prestandardized:
+
+            # get measurement events
+            events = (
+                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+                .withColumn("concept_id", F.col("measurement_concept_id"))
+                .filter(F.col("concept_id") != 0)
+                .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
+                .withColumn("event_type", F.lit("measurement"))
+                .withColumn("visit_id", F.col("visit_occurrence_id"))
+                .withColumn("unit", F.col("unit_source_value"))
+                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
+            )
+        
+        else:
+
+            # get measurement events, but note that unit, value, and concept_id should come from special fields
+            events = (
+                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+                .withColumn("concept_id", F.col("std_concept_id"))
+                .filter(F.col("concept_id") != 0)
+                .withColumn("value", F.col("value_converted")) # basically either a float or smthg like "negative" or "-", etc.
+                .withColumn("event_type", F.lit("measurement"))
+                .withColumn("visit_id", F.col("visit_occurrence_id"))
+                .withColumn("unit", F.col("unit_converted"))
+                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
+            )
 
     # undefined table
     else:
@@ -234,7 +251,7 @@ def extract_events(df, table):
     
     # handle concept_id
     if "code" not in events.columns:
-        events = events.withColumn("code", F.col("concept_id")).drop("omop_concept_id", "concept_id")
+        events = events.withColumn("code", F.col("concept_id")).drop("concept_id")
 
     # cast visit id to correct type
     events = events.withColumn("visit_id", F.col("visit_id").cast("long"))

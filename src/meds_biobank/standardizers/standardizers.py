@@ -1,6 +1,8 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 
+# TODO: PROMISE - each measurement id only has one unit
+
 COVERED_ANCESTORS = [
     1618784,1621295,1990626,1990650,2212742,4028908,36662633,40652525,40652534,40652549,40652611,40652616,40652640,40652709,
     40652733,40652745,40652796,40652802,40652808,40652867,40652870,40652885,40652982,40652995,40653085,40653141,40653151,
@@ -1809,9 +1811,9 @@ def standardize(msmt, concept_ancestor, concept):
     labs_vitals_union = all_frames[0]
     for frame in all_frames[1:]:
         labs_vitals_union = labs_vitals_union.unionByName(frame, allowMissingColumns=True)
+    labs_vitals_union = labs_vitals_union.withColumnRenamed("value_converted", "numeric_value_converted")
 
-    # perform fallback logic for all unmapped types (lacks std concept id)
-    std_concept_ids = labs_vitals_union.select("std_concept_id").distinct()
+    # perform fallback logic for all unmapped measurements (for now, null all values)
     unmapped_msmt = msmt.join(
         labs_vitals_union.select("measurement_id").distinct(),
         on="measurement_id",
@@ -1819,12 +1821,16 @@ def standardize(msmt, concept_ancestor, concept):
     )
     fallback_msmt = (
         unmapped_msmt
-        .withColumn("value_converted", F.lit(None))
+        .withColumn("numeric_value_converted", F.lit(None))
+        .withColumn("text_value_converted", F.lit(None))
         .withColumn("unit_converted", F.lit(None))
         .withColumn("std_concept_id", F.col("measurement_concept_id"))
-    )
+    ) # TODO: smarter fallback to ensure unit is homogenous w/in std_concept_id
 
     # union all data frames and return
     final_msmt = labs_vitals_union.unionByName(fallback_msmt, allowMissingColumns=True)
 
     return final_msmt
+
+# TODO: TEST each measurement type has at most one unit
+# TODO: TEST each measurement id is still present
