@@ -26,7 +26,7 @@ test = ["pytest"]
 testpaths = ["tests"]
 
 [project.urls]
-Homepage = "https://github.com/AndrewLZolensky/meds-biobank"
+Homepage = "https://github.com/Verma-Lab/meds-biobank"
 
 [tool.setuptools.packages.find]
 where = ["src"]
