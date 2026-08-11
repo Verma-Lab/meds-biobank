@@ -2,20 +2,16 @@ import pyspark.sql.functions as F
 from pyspark.sql import Window
 import json
 import os
+from meds_biobank import concepts
+
+CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 class Ontology():
     
     # TODO: rework given upstream changes to standardization/etl, move codes to a global config file
 
     def __init__(self):
-        self.SPECIAL_CODES = {
-            "IsHospitalAdmission": 700000001,
-            "IsInpatientAdmission": 700000002,
-            "IsObservation": 700000003,
-            "IsEdVisit": 700000004,
-            "IsOutpatientFaceToFaceVisit": 700000005,
-            "IsVideoVisit": 700000007,
-        }
+        self.SPECIAL_CODES = CUSTOM_CONCEPTS
         self.codes = None # e.g. 1203, 1407
         self.domains = None # e.g. measurement, drug, labs_albumin
         self.qualifiers = None # e.g. phecodes/cardiomyopathy, ATC/class
@@ -298,6 +294,9 @@ if __name__ == "__main__":
 
     # imports
     from pyspark.sql import SparkSession
+    from dotenv import load_dotenv
+    from pathlib import Path
+    import os
 
     # init spark session
     spark = (
@@ -308,22 +307,25 @@ if __name__ == "__main__":
         .getOrCreate()
     )
 
-    #TODO: move to YAML!!!!
     # read concept, concept_ancestor, qualifications, and events
-    events = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv", header=True, inferSchema=True)
-    concept = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept.csv", header=True, inferSchema=True)
-    concept_ancestor = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept_ancestor.csv", header=True, inferSchema=True)
+    load_dotenv()
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    events_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds.csv"
+    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"]
+    events = spark.read.csv(str(events_path), header=True, inferSchema=True)
+    concept = spark.read.csv(str(data_dir / "concept.csv"), header=True, inferSchema=True)
+    concept_ancestor = spark.read.csv(str(data_dir / "concept_ancestor.csv"), header=True, inferSchema=True)
 
     # set dirname
-    dirname = "/Users/zolensky/Code/meds-biobank/data/ontologies"
+    ontology_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
 
     # create ontology object, fit, and save
     ontology = Ontology()
     ontology.compute_concept_ontology(events, concept, concept_ancestor)
     ontology.bin_measurements(events)
     ontology.rollup_concepts(events, concept_ancestor)
-    ontology.save_to_disk(dirname, override=True)
+    ontology.save_to_disk(str(ontology_dir), override=True)
 
     # load saved ontology object
     new_ontology = Ontology()
-    new_ontology.load_from_disk(dirname)
+    new_ontology.load_from_disk(str(ontology_dir))

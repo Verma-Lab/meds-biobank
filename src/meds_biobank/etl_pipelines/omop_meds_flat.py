@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from meds_biobank import concepts
 
 """
 This is the OMOP-meds ETL from meds_etl 0.1.3
@@ -7,10 +8,8 @@ This is the OMOP-meds ETL from meds_etl 0.1.3
 
 # TODO: add option to use value_converted and unit_converted from measurements table
 
-# TODO: add option to maintain original OMOP concept id rather than translating to code = vocabulary_id/source_code
-
-OMOP_BIRTH = 4083587
-OMOP_DEATH = 4306655
+OMOP_BIRTH = concepts.OMOP_BIRTH
+OMOP_DEATH = concepts.OMOP_DEATH
 
 def extract_events(df, table):
     """
@@ -438,21 +437,3 @@ def post_process_events(events, concepts):
 
 def format_df(meds_events):
     return meds_events.orderBy("patient_id", "time")
-
-if __name__ == "__main__":
-
-    # read tables
-    visit_occurrence = spark.sql("SELECT * FROM visit_occurrence")
-    drug_exposure = spark.sql("SELECT * FROM drug_exposure")
-    concept = spark.sql("SELECT * FROM concept")
-
-    # pack for ETL
-    dfs = [visit_occurrence, drug_exposure]
-    tables = ["visit_occurrence", "drug_exposure"]
-
-    # perform ETL
-    event_dfs = [extract_events(dfs[i], tables[i]) for i in range(len(dfs))]
-    event_df = gather_event_dfs(event_dfs)
-    pruned_event_df = prune_events(event_df)
-    meds_events = post_process_events(pruned_event_df, concept)
-    meds_events = format_df(meds_events)

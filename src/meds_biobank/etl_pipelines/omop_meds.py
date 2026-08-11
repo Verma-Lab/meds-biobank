@@ -1,17 +1,11 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from meds_biobank import concepts
 
-OMOP_BIRTH = 4083587
-OMOP_DEATH = 4306655
-OMOP_INPATIENT = 9201
-CUSTOM_CONCEPTS = {
-    "IsHospitalAdmission": 700000001,
-    "IsInpatientAdmission": 700000002,
-    "IsObservation": 700000003,
-    "IsEdVisit": 700000004,
-    "IsOutpatientFaceToFaceVisit": 700000005,
-    "IsVideoVisit": 700000007,
-}
+OMOP_BIRTH = concepts.OMOP_BIRTH
+OMOP_DEATH = concepts.OMOP_DEATH
+OMOP_INPATIENT = concepts.OMOP_INPATIENT
+CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 def extract_events(df, table):
     """
@@ -361,6 +355,8 @@ if __name__ == "__main__":
     from pathlib import Path
     from pyspark.sql import SparkSession
     import shutil
+    from dotenv import load_dotenv
+    import os
 
     # create spark session
     spark = (
@@ -371,9 +367,10 @@ if __name__ == "__main__":
         .getOrCreate()
     )
 
-    # TODO: add yaml/env and supress hard-coded paths
     # set data dir
-    data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
+    load_dotenv()
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"]
 
     # read data tables
     tables = [
@@ -383,42 +380,21 @@ if __name__ == "__main__":
         spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True)
+        spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
     ]
-    labs = [
-        spark.read.csv(str(data_dir / "labs_creatinine.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "labs_glucose.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "labs_hba1c.csv"), header=True, inferSchema=True)
-    ]
-    vitals = [
-        spark.read.csv(str(data_dir / "vitals_heart_rate.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "vitals_spo2.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "vitals_systolic_bp.csv"), header=True, inferSchema=True)
-    ]
-    measurement = spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
 
     # record table names
-    table_names = ["condition_occurrence", "death", "drug_exposure", "observation", "person", "procedure_occurrence", "visit_occurrence"]
-    lab_names = ["labs_creatinine", "labs_glucose", "labs_hba1c"]
-    vital_names = ["vitals_heart_rate", "vitals_spo2", "vitals_systolic_bp"]
+    table_names = ["condition_occurrence", "death", "drug_exposure", "observation", "person", "procedure_occurrence", "visit_occurrence", "measurement"]
 
     # extract events
     event_dfs = []
     for table, name in zip(tables, table_names):
         result = extract_events(table, name)
         event_dfs.append(result)
-    for table, name in zip(labs, lab_names):
-        result = extract_events(table, name)
-        event_dfs.append(result)
-    for table, name in zip(vitals, vital_names):
-        result = extract_events(table, name)
-        event_dfs.append(result)
-    
-    # extract measurement events
-    measurement_events = extract_events(measurement, "measurement")
 
     # gather events together
-    gathered_events = gather_events(event_dfs, measurement_events)
+    gathered_events = gather_events(event_dfs)
 
     # prune events
     pruned_events = prune_events(gathered_events)
@@ -432,6 +408,6 @@ if __name__ == "__main__":
     # show
     print(formatted_events.limit(25).toPandas())
 
-    # set write dir
-    write_dir = "/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv"
-    formatted_events.toPandas().to_csv(str(write_dir), index=False)
+    # set write dir and write
+    write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds.csv"
+    formatted_events.toPandas().to_csv(str(write_path), index=False)

@@ -1,17 +1,11 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from meds_biobank import concepts
 
-OMOP_BIRTH = 4083587
-OMOP_DEATH = 4306655
-OMOP_INPATIENT = 9201
-CUSTOM_CONCEPTS = {
-    "IsHospitalAdmission": 700000001,
-    "IsInpatientAdmission": 700000002,
-    "IsObservation": 700000003,
-    "IsEdVisit": 700000004,
-    "IsOutpatientFaceToFaceVisit": 700000005,
-    "IsVideoVisit": 700000007,
-}
+OMOP_BIRTH = concepts.OMOP_BIRTH
+OMOP_DEATH = concepts.OMOP_DEATH
+OMOP_INPATIENT = concepts.OMOP_INPATIENT
+CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 def extract_events(df, table, use_omop_cid=True):
     """
@@ -478,6 +472,8 @@ if __name__ == "__main__":
     from pathlib import Path
     from pyspark.sql import SparkSession
     import shutil
+    from dotenv import load_dotenv
+    import os
 
     # create spark session
     spark = (
@@ -489,7 +485,9 @@ if __name__ == "__main__":
     )
 
     # set data dir
-    data_dir = Path("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP")
+    load_dotenv()
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    data_dir = REPO_ROOT / os.environ["PMBB_OMOP_DATA_DIR"]
 
     # read data tables
     tables = [
@@ -549,5 +547,5 @@ if __name__ == "__main__":
     print(formatted_events.limit(25).toPandas())
 
     # set write dir
-    write_dir = "/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv"
-    formatted_events.toPandas().to_csv(str(write_dir), index=False)
+    write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "pmbb_meds.csv"
+    formatted_events.toPandas().to_csv(str(write_ptah), index=False)

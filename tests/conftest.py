@@ -1,6 +1,10 @@
 import pytest
 from pyspark.sql import SparkSession
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 @pytest.fixture(scope="session")
 def spark():
@@ -16,7 +20,7 @@ def spark():
 
 @pytest.fixture(scope="session")
 def data_dir():
-    return Path(__file__).resolve().parent.parent / "data/omop"
+    return Path(__file__).resolve().parent.parent / os.environ["OMOP_DATA_DIR"]
 
 @pytest.fixture(scope="session")
 def concept_ancestor(spark, data_dir):
@@ -62,7 +66,7 @@ def visit_occurrence(spark, data_dir):
 
 @pytest.fixture(scope="session")
 def pmbb_data_dir():
-    return Path(__file__).resolve().parent.parent / "data/pmbb-omop"
+    return Path(__file__).resolve().parent.parent / os.environ["PMBB_OMOP_DATA_DIR"]
 
 @pytest.fixture(scope="session")
 def pmbb_concept_ancestor(spark, pmbb_data_dir):
@@ -124,8 +128,16 @@ def pmbb_vitals(spark, pmbb_data_dir):
 
 @pytest.fixture(scope="session")
 def pmbb_meds_data_path(spark):
-    return Path(__file__).resolve().parent.parent / "data/meds/pmbb_meds.csv"
+    return Path(__file__).resolve().parent.parent / os.environ["MEDS_DATA_DIR"] / "pmbb_meds.csv"
 
 @pytest.fixture(scope="session")
 def pmbb_meds_events(spark, pmbb_meds_data_path):
+    return spark.read.csv(str(pmbb_meds_data_path), header=True, inferSchema=True)
+
+@pytest.fixture(scope="session")
+def meds_data_path(spark):
+    return Path(__file__).resolve().parent.parent / os.environ["MEDS_DATA_DIR"] / "meds.csv"
+
+@pytest.fixture(scope="session")
+def meds_events(spark, pmbb_meds_data_path):
     return spark.read.csv(str(pmbb_meds_data_path), header=True, inferSchema=True)

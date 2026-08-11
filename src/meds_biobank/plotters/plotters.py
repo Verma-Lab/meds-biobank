@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from PIL import Image, ImageDraw, ImageFont
+from meds_biobank import concepts
 
 EVENT_EMOJIS = {
     "death": "\U0001F480",
@@ -80,6 +81,9 @@ if __name__ == "__main__":
     from pyspark.sql import SparkSession
     import pyspark.sql.functions as F
     import random
+    from dotenv import load_dotenv
+    import os
+    from pathlib import Path
 
     # spark setup
     spark = (
@@ -91,7 +95,10 @@ if __name__ == "__main__":
     )
 
     # load patient events and prepare as dict
-    meds_events = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv", header=True, inferSchema=True)
+    load_dotenv()
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    events_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds.csv"
+    meds_events = spark.read.csv(str(events_path), header=True, inferSchema=True)
     patient_ids = [row["patient_id"] for row in meds_events.select("patient_id").collect()]
     patient_id = random.choice(patient_ids)
     meds_events = meds_events.filter(F.col("patient_id") == patient_id)
@@ -102,16 +109,10 @@ if __name__ == "__main__":
     print(f"Selected Patient: {patient_id}, Visit: {visit_id}")
 
     # load concept and prepare as dict
-    CUSTOM_CONCEPTS = {
-        "IsHospitalAdmission": 700000001,
-        "IsInpatientAdmission": 700000002,
-        "IsObservation": 700000003,
-        "IsEdVisit": 700000004,
-        "IsOutpatientFaceToFaceVisit": 700000005,
-        "IsVideoVisit": 700000007,
-    }
+    CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
     CONCEPTS_CUSTOM = {str(v):k for k,v in CUSTOM_CONCEPTS.items()}
-    concept = spark.read.csv("/Users/zolensky/Code/meds-biobank/data/PMBB-OMOP/concept.csv", header=True, inferSchema=True)
+    concept_path = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "concept.csv"
+    concept = spark.read.csv(str(concept_path), header=True, inferSchema=True)
     concept = {str(row["concept_id"]): row["concept_name"] for row in concept.collect()}
     concept = concept | CONCEPTS_CUSTOM
 

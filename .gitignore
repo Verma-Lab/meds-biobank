@@ -5,3 +5,4 @@
 instructions.txt
 .pytest_cache
 .DS_Store
+.env
