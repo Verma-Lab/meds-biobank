@@ -179,7 +179,7 @@ formatted_events.toPandas().to_csv(str(write_dir), index=False)
 
 ---
 
-#### Stable OMOP MEDS-ETL
+## Stable OMOP MEDS-ETL
 
 ### Path
 
