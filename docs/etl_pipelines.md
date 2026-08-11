@@ -92,43 +92,6 @@ OMOP -> MEDS ETL for PMBB in particular. Converts PMBB OMOP v5.4/5.3 → MEDS|
 ### Supported Tables
 `person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `labs_/vitals_` ·  `death`
 
----
-
-#### Stable OMOP MEDS-ETL
-
-### Path
-
-`/meds-biobank/src/meds-biobank/etl_pipelines/omop_meds.py`
-
-### Description
-
-Modern custom OMOP -> MEDS ETL. Minor modifications on OMOP MEDS-ETL 0.3.11.
-
-### Workflow
-
-1. Extract all events
-2. Gather into one df
-3. Prune / deduplicate patient event streams
-4. Post-process value fields
-5. Order event streams by patient, time
-
-### Output Format
-
-- |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-- patient_id: id of the patient
-- code: OMOP concept id. Unless explicitly specified via boolean flag, use standardized OMOP concept id. Otherwise try to use source concept id.
-- time: time of event. coalesce in order (start datetime, start date, datetime date)
-- end: (optional) end time of event. Coalesce in order (end datetime, end date).
-- numeric_value: contains source value cast to numeric if possible
-- text_value: contains source value as string if numeric cast fails
-- unit: contains source unit
-- event_type: source OMOP domain for the table contianing the event (e.g. measurement, procedure, etc.)
-- visit_id: id of visit that generated the event
-
-### Supported Tables
-
-`person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `death`
-
 ### Example
 
 ```bash
@@ -210,6 +173,43 @@ formatted_events = format_events(post_processed_events)
 print(formatted_events.limit(25).toPandas())
 
 # set write dir
-write_dir = "/Users/zolensky/Code/meds-biobank/data/MEDS/pmbb_meds.csv"
+write_dir = Path(__file__).resolve().parents[3] / os.environ["MEDS_DATA_DIR"] / pmbb_meds.csv
 formatted_events.toPandas().to_csv(str(write_dir), index=False)
 ```
+
+---
+
+#### Stable OMOP MEDS-ETL
+
+### Path
+
+`/meds-biobank/src/meds-biobank/etl_pipelines/omop_meds.py`
+
+### Description
+
+Modern custom OMOP -> MEDS ETL. Minor modifications on OMOP MEDS-ETL 0.3.11.
+
+### Workflow
+
+1. Extract all events
+2. Gather into one df
+3. Prune / deduplicate patient event streams
+4. Post-process value fields
+5. Order event streams by patient, time
+
+### Output Format
+
+- |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+- patient_id: id of the patient
+- code: OMOP concept id. Unless explicitly specified via boolean flag, use standardized OMOP concept id. Otherwise try to use source concept id.
+- time: time of event. coalesce in order (start datetime, start date, datetime date)
+- end: (optional) end time of event. Coalesce in order (end datetime, end date).
+- numeric_value: contains source value cast to numeric if possible
+- text_value: contains source value as string if numeric cast fails
+- unit: contains source unit
+- event_type: source OMOP domain for the table contianing the event (e.g. measurement, procedure, etc.)
+- visit_id: id of visit that generated the event
+
+### Supported Tables
+
+`person` · `visit_occurrence` · `procedure_occurrence` · `condition_occurrence` · `drug_exposure` · `observation` · `measurements` · `death`
