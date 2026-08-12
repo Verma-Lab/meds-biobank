@@ -1,5 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from pyspark.sql import functions as F, Window
 
 # TODO: PROMISE - each measurement id only has one unit
 
@@ -45,6 +46,9 @@ def standardize(msmt, concept_ancestor, concept):
 
     # TODO: map text values?
 
+    # init msmts trackers
+    all_frames = []
+
     # join msmt with concept ancestor
     msmt_ca = msmt.join(
         concept_ancestor,
@@ -66,6 +70,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
     )
+    all_frames.append(labs_alt)
 
     # albumin
     labs_albumin = (
@@ -88,6 +93,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("g/dL"))
     )
+    all_frames.append(labs_albumin)
 
     # alp
     labs_alp = (
@@ -103,6 +109,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
     )
+    all_frames.append(labs_alp)
 
     # anion gap
     labs_anion_gap = (
@@ -118,6 +125,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
     )
+    all_frames.append(labs_anion_gap)
 
     # apo_b
     labs_apo_b = (
@@ -142,6 +150,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_apo_b)
 
     # amh
     labs_amh = (
@@ -163,6 +172,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_amh)
 
     # ast
     labs_ast = (
@@ -178,6 +188,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
     )
+    all_frames.append(labs_ast)
 
     # basophils
     labs_basophils = (
@@ -200,6 +211,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_basophils)
 
     # beta_globulin
     labs_beta_globulin = (
@@ -221,6 +233,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("g/dL"))
     )
+    all_frames.append(labs_beta_globulin)
 
     # bilirubin_total
     labs_bilirubin_total = (
@@ -245,6 +258,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_bilirubin_total)
 
     # bun
     labs_bun = (
@@ -269,11 +283,13 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_bun)
 
     # crp
     labs_crp = (
         msmt_ca
         .filter((F.col("ancestor_concept_id") == 40652733) | (F.col("measurement_concept_id") == 3020460))
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40652733))
         .withColumn(
             "value_converted",
@@ -293,6 +309,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_crp)
 
     # crp_hs
     labs_crp_hs = (
@@ -311,6 +328,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/L"))
     )
+    all_frames.append(labs_crp_hs)
 
     # calcium
     labs_calcium = (
@@ -335,6 +353,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_calcium)
 
     # chloride
     labs_chloride = (
@@ -350,6 +369,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
     )
+    all_frames.append(labs_chloride)
 
     # chol_hdl
     labs_chol_hdl = (
@@ -374,6 +394,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_chol_hdl)
 
     # chol_ldl
     labs_chol_ldl = (
@@ -398,11 +419,13 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_chol_ldl)
 
     # chol_vldl
     labs_chol_vldl = (
         msmt_ca
         .filter((F.col("ancestor_concept_id") == 40654576) | (F.col("measurement_concept_id") == 3009596))
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40654576))
         .withColumn(
             "value_converted",
@@ -422,6 +445,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_chol_vldl)  
 
     # chol_total
     labs_chol_total = (
@@ -446,6 +470,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_chol_total)
 
     # c4
     labs_c4 = (
@@ -470,6 +495,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_c4)
 
     # covid
     labs_covid = (
@@ -479,6 +505,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.lit("NA"))
         .withColumn("unit_converted", F.lit("NA"))
     )
+    all_frames.append(labs_covid)
 
     # ck
     labs_ck = (
@@ -500,6 +527,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_ck)
 
     # creatinine
     labs_creatinine = (
@@ -524,6 +552,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_creatinine)
 
     # creatinine_urine
     labs_creatinine_urine = (
@@ -548,6 +577,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_creatinine_urine)
 
     # ccpab
     labs_ccpab = (
@@ -557,6 +587,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.lit("NA"))
         .withColumn("unit_converted", F.lit("NA"))
     )
+    all_frames.append(labs_ccpab)
 
     # eosinophils
     labs_eosinophils = (
@@ -579,6 +610,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_eosinophils)
 
     # rbc
     labs_rbc = (
@@ -598,6 +630,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Million/uL"))
     )
+    all_frames.append(labs_rbc)
 
     # rbc_urine
     labs_rbc_urine = (
@@ -607,6 +640,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.lit("NA"))
         .withColumn("unit_converted", F.lit("NA"))
     )
+    all_frames.append(labs_rbc_urine)
 
     # esr
     labs_esr = (
@@ -617,7 +651,7 @@ def standardize(msmt, concept_ancestor, concept):
             & F.lower(F.col("concept_name")).like("%eryth%")
             & F.lower(F.col("concept_name")).like("%sed%")
         )
-        .withColumn("std_concept_id", F.lit(4028908))
+        .withColumn("std_concept_id", F.lit(3015183))
         .withColumn(
             "value_converted",
             F.when(
@@ -627,6 +661,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mm/h"))
     )
+    all_frames.append(labs_esr)
 
     # ggt
     labs_ggt = (
@@ -644,6 +679,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
     )
+    all_frames.append(labs_ggt)
 
     # ferritin
     labs_ferritin = (
@@ -665,6 +701,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_ferritin)
 
     # folate
     labs_folate = (
@@ -686,6 +723,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_folate)
 
     # glucose
     labs_glucose = (
@@ -713,6 +751,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_glucose)
 
     # glucose_fasting
     labs_glucose_fasting = (
@@ -738,6 +777,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_glucose_fasting)
 
     # glucose_urine
     labs_glucose_urine = (
@@ -762,6 +802,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_glucose_urine)
 
     # granulocytes
     labs_granulocytes = (
@@ -771,6 +812,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.lit("NA"))
         .withColumn("unit_converted", F.lit("NA"))
     )
+    all_frames.append(labs_granulocytes)
 
     # hemoglobin
     labs_hemoglobin = (
@@ -792,6 +834,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("g/dL"))
     )
+    all_frames.append(labs_hemoglobin)
 
     # hba1c
     labs_hba1c = (
@@ -807,6 +850,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("%"))
     )
+    all_frames.append(labs_hba1c)
 
     # iga
     labs_iga = (
@@ -831,6 +875,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_iga)
 
     # igg
     labs_igg = (
@@ -855,6 +900,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_igg)
 
     # igm
     labs_igm = (
@@ -879,6 +925,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_igm)
 
     # inr
     labs_inr = (
@@ -890,6 +937,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.round(F.try_cast(F.col("value_source_value"), "double"), 3))
         .withColumn("unit_converted", F.lit("ratio"))
     )
+    all_frames.append(labs_inr)
 
     # iron
     labs_iron = (
@@ -905,11 +953,13 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ug/dL"))
     )
+    all_frames.append(labs_iron)
 
     # ketones
     labs_ketones = (
         msmt_ca
         .filter((F.col("ancestor_concept_id") == 40656264) | (F.col("measurement_source_value") == "5797-6"))
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40656264))
         .withColumn(
             "value_converted",
@@ -929,6 +979,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_ketones)
 
     # leukocyte_esterase
     labs_leukocyte_esterase = (
@@ -944,6 +995,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Leu/uL"))
     )
+    all_frames.append(labs_leukocyte_esterase)
 
     # wbc
     labs_wbc = (
@@ -975,6 +1027,7 @@ def standardize(msmt, concept_ancestor, concept):
         .withColumn("value_converted", F.lit("NA"))
         .withColumn("unit_converted", F.lit("NA"))
     )
+    all_frames.append(labs_wbc_urine)
 
     # lipoprotein_a
     labs_lipoprotein_a = (
@@ -999,6 +1052,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_lipoprotein_a)
 
     # lymphocytes
     labs_lymphocytes = (
@@ -1021,6 +1075,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_lymphocytes)
 
     # wbc (dedupe against lymphocytes)
     labs_wbc = labs_wbc.join(
@@ -1028,6 +1083,7 @@ def standardize(msmt, concept_ancestor, concept):
         on=["person_id", "measurement_date", "value_source_value"],
         how="left_anti"
     )
+    all_frames.append(labs_wbc)
 
     # magnesium
     labs_magnesium = (
@@ -1052,6 +1108,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_magnesium)
 
     # metamyelocytes
     labs_metamyelocytes = (
@@ -1060,6 +1117,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40654064)
             | (F.col("measurement_concept_id").isin(3012392, 3024507))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40654064))
         .withColumn(
             "value_converted",
@@ -1073,6 +1131,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Cells/uL"))
     )
+    all_frames.append(labs_metamyelocytes)
 
     # metanephrine
     labs_metanephrine = (
@@ -1088,6 +1147,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
     )
+    all_frames.append(labs_metanephrine)
 
     # microalbumin
     labs_microalbumin = (
@@ -1106,6 +1166,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mcg/mL"))
     )
+    all_frames.append(labs_microalbumin)
 
     # microalbumin_creatinine_ratio
     labs_microalbumin_creatinine_ratio = (
@@ -1121,6 +1182,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mcg/mg"))
     )
+    all_frames.append(labs_microalbumin_creatinine_ratio)
 
     # monocytes
     labs_monocytes = (
@@ -1143,6 +1205,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_monocytes)
 
     # neutrophils
     labs_neutrophils = (
@@ -1165,6 +1228,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_neutrophils)
 
     # neutrophils_bandform
     labs_neutrophils_bandform = (
@@ -1173,6 +1237,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40654083)
             | (F.col("measurement_concept_id").isin(3008939, 3018199))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40654083))
         .withColumn(
             "value_converted",
@@ -1190,6 +1255,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_neutrophils_bandform)
 
     # neutrophils_segmented
     labs_neutrophils_segmented = (
@@ -1198,6 +1264,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40654086)
             | (F.col("measurement_concept_id").isin(3027270, 3015586))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40654086))
         .withColumn(
             "value_converted",
@@ -1215,6 +1282,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_neutrophils_segmented)
 
     # normetanephrine
     labs_normetanephrine = (
@@ -1230,6 +1298,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
     )
+    all_frames.append(labs_normetanephrine)
 
     # ptt
     labs_ptt = (
@@ -1250,6 +1319,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Second(s)"))
     )
+    all_frames.append(labs_ptt)
 
     # phosphate
     labs_phosphate = (
@@ -1274,6 +1344,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_phosphate)
 
     # platelets
     labs_platelets = (
@@ -1296,6 +1367,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
     )
+    all_frames.append(labs_platelets)
 
     # potassium
     labs_potassium = (
@@ -1311,6 +1383,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
     )
+    all_frames.append(labs_potassium)
 
     # prealbumin
     labs_prealbumin = (
@@ -1335,6 +1408,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_prealbumin)
 
     # promyelocytes
     labs_promyelocytes = (
@@ -1343,6 +1417,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40654115)
             | (F.col("measurement_concept_id").isin(3022709, 3024153))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40654115))
         .withColumn(
             "value_converted",
@@ -1356,6 +1431,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Cells/uL"))
     )
+    all_frames.append(labs_promyelocytes)
 
     # protein
     labs_protein = (
@@ -1377,6 +1453,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("g/dL"))
     )
+    all_frames.append(labs_protein)
 
     # protein_urine
     labs_protein_urine = (
@@ -1385,6 +1462,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40657714)
             | (F.col("measurement_concept_id").isin(3005897, 3035511, 3014051, 3037121, 40760845))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40657714))
         .withColumn(
             "value_converted",
@@ -1404,6 +1482,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_protein_urine)
 
     # pt
     labs_pt = (
@@ -1420,6 +1499,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Second(s)"))
     )
+    all_frames.append(labs_pt)
 
     # rf
     labs_rf = (
@@ -1428,6 +1508,7 @@ def standardize(msmt, concept_ancestor, concept):
             (F.col("ancestor_concept_id") == 40653663)
             | (F.col("measurement_concept_id").isin(3021614, 3015688, 3024763))
         )
+        .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(40653663))
         .withColumn(
             "value_converted",
@@ -1438,6 +1519,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("International Units/mL"))
     )
+    all_frames.append(labs_rf)
 
     # shbg
     labs_shbg = (
@@ -1453,6 +1535,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
     )
+    all_frames.append(labs_shbg)
 
     # sodium
     labs_sodium = (
@@ -1468,6 +1551,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
     )
+    all_frames.append(labs_sodium)
 
     # testosterone_free
     labs_testosterone_free = (
@@ -1486,6 +1570,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("pg/mL"))
     )
+    all_frames.append(labs_testosterone_free)
 
     # tsh
     labs_tsh = (
@@ -1503,6 +1588,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("uIU/mL"))
     )
+    all_frames.append(labs_tsh)
 
     # transferrin
     labs_transferrin = (
@@ -1527,6 +1613,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_transferrin)
 
     # triglycerides
     labs_triglycerides = (
@@ -1551,6 +1638,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_triglycerides)
 
     # troponin_i
     labs_troponin_i = (
@@ -1572,6 +1660,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_troponin_i)
 
     # troponin_t
     labs_troponin_t = (
@@ -1593,6 +1682,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
     )
+    all_frames.append(labs_troponin_t)
 
     # urobilinogen
     labs_urobilinogen = (
@@ -1617,6 +1707,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
     )
+    all_frames.append(labs_urobilinogen)
 
     # vitals_bp_diastolic
     vitals_bp_diastolic = (
@@ -1633,6 +1724,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmHg"))
     )
+    all_frames.append(vitals_bp_diastolic)
 
     # vitals_bp_systolic
     vitals_bp_systolic = (
@@ -1649,6 +1741,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("mmHg"))
     )
+    all_frames.append(vitals_bp_systolic)
 
     # vitals_bmi
     vitals_bmi = (
@@ -1665,6 +1758,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("kg/m^2"))
     )
+    all_frames.append(vitals_bmi)
 
     # vitals_height
     vitals_height = (
@@ -1683,6 +1777,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Inches"))
     )
+    all_frames.append(vitals_height)
 
     # vitals_o2sat
     vitals_o2sat = (
@@ -1698,6 +1793,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("%"))
     )
+    all_frames.append(vitals_o2sat)
 
     # vitals_pulse
     vitals_pulse = (
@@ -1713,6 +1809,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Counts/Min"))
     )
+    all_frames.append(vitals_pulse)
 
     # vitals_resp_rate
     vitals_resp_rate = (
@@ -1728,6 +1825,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Counts/Min"))
     )
+    all_frames.append(vitals_resp_rate)
 
     # vitals_temperature
     vitals_temperature = (
@@ -1746,6 +1844,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("Degrees Fahrenheit"))
     )
+    all_frames.append(vitals_temperature)
 
     # vitals_weight
     vitals_weight = (
@@ -1764,8 +1863,7 @@ def standardize(msmt, concept_ancestor, concept):
         )
         .withColumn("unit_converted", F.lit("oz"))
     )
-
-    # TODO: add more!
+    all_frames.append(vitals_weight)
 
     # union all labs/vitals frames, pared to the input measurement schema + std_concept_id/value_converted/unit_converted
     OUTPUT_COLUMNS = [
@@ -1775,28 +1873,10 @@ def standardize(msmt, concept_ancestor, concept):
         "measurement_source_concept_id", "unit_source_value", "value_source_value",
         "std_concept_id", "value_converted", "unit_converted",
     ]
-    all_frames = [
-        labs_albumin, labs_alp, labs_alt, labs_amh, labs_anion_gap, labs_apo_b, labs_ast, labs_basophils,
-        labs_beta_globulin, labs_bilirubin_total, labs_bun, labs_c4, labs_calcium, labs_ccpab, labs_chloride,
-        labs_chol_hdl, labs_chol_ldl, labs_chol_total, labs_chol_vldl, labs_ck, labs_covid, labs_creatinine,
-        labs_creatinine_urine, labs_crp, labs_crp_hs, labs_eosinophils, labs_esr,
-        labs_ferritin, labs_folate, labs_ggt, labs_glucose, labs_glucose_fasting, labs_glucose_urine,
-        labs_granulocytes, labs_hba1c, labs_hemoglobin, labs_iga, labs_igg, labs_igm, labs_inr, labs_iron,
-        labs_ketones, labs_leukocyte_esterase, labs_lipoprotein_a, labs_lymphocytes, labs_magnesium,
-        labs_metamyelocytes, labs_metanephrine, labs_microalbumin, labs_microalbumin_creatinine_ratio,
-        labs_monocytes, labs_neutrophils, labs_neutrophils_bandform, labs_neutrophils_segmented,
-        labs_normetanephrine, labs_phosphate, labs_platelets, labs_potassium, labs_prealbumin,
-        labs_promyelocytes, labs_protein, labs_protein_urine, labs_pt, labs_ptt, labs_rbc, labs_rbc_urine,
-        labs_rf, labs_shbg, labs_sodium, labs_testosterone_free, labs_transferrin, labs_triglycerides,
-        labs_troponin_i, labs_troponin_t, labs_tsh, labs_urobilinogen, labs_wbc, labs_wbc_urine,
-        vitals_bmi, vitals_bp_diastolic, vitals_bp_systolic, vitals_height, vitals_o2sat, vitals_pulse,
-        vitals_resp_rate, vitals_temperature, vitals_weight,
-    ]
     all_frames = [df.select(*[c for c in OUTPUT_COLUMNS if c in df.columns]) for df in all_frames]
     labs_vitals_union = all_frames[0]
     for frame in all_frames[1:]:
         labs_vitals_union = labs_vitals_union.unionByName(frame, allowMissingColumns=True)
-    labs_vitals_union = labs_vitals_union.withColumnRenamed("value_converted", "numeric_value_converted")
 
     # perform fallback logic for all unmapped measurements (for now, null all values)
     unmapped_msmt = msmt.join(
@@ -1804,18 +1884,157 @@ def standardize(msmt, concept_ancestor, concept):
         on="measurement_id",
         how="left_anti"
     )
-    fallback_msmt = (
-        unmapped_msmt
-        .withColumn("numeric_value_converted", F.lit(None))
-        .withColumn("text_value_converted", F.lit(None))
-        .withColumn("unit_converted", F.lit(None))
-        .withColumn("std_concept_id", F.col("measurement_concept_id"))
-    ) # TODO: smarter fallback, ensure unit is homogenous w/in std_concept_id
+
+    # perform fallback logic for all other measurement types
+    fallback_msmt = autostd(unmapped_msmt)
 
     # union all data frames and return
     final_msmt = labs_vitals_union.unionByName(fallback_msmt, allowMissingColumns=True)
 
     return final_msmt
+
+def autostd(msmt):
+
+    # map units to canonical value
+    unit_lower = F.lower(F.col("unit_source_value"))
+    normalized_unit = (
+        # mass-concentration ladder: mg/dL <-> g/dL <-> g/L <-> mg/L <-> mg/mL
+        F.when(unit_lower.rlike(r'^mg/\s?dl$'), F.lit("mg/dL"))
+        .when(unit_lower.rlike(r'^gm?/dl$'), F.lit("g/dL"))
+        .when(unit_lower == "g/l", F.lit("g/L"))
+        .when(unit_lower == "mg/l", F.lit("mg/L"))
+        .when(unit_lower == "mg/ml", F.lit("mg/mL"))
+        # hormone/protein ladder: pg/mL <-> ng/L <-> ng/dL <-> ng/mL
+        .when(unit_lower == "pg/ml", F.lit("pg/mL"))
+        .when(unit_lower == "ng/l", F.lit("ng/L"))
+        .when(unit_lower == "ng/dl", F.lit("ng/dL"))
+        .when(unit_lower == "ng/ml", F.lit("ng/mL"))
+        # microgram ladder: ug/mL <-> ug/dL ("mcg" is a synonym for "ug")
+        .when((unit_lower == "ug/ml") | (unit_lower == "mcg/ml"), F.lit("ug/mL"))
+        .when((unit_lower == "ug/dl") | (unit_lower == "mcg/dl"), F.lit("ug/dL"))
+        .when(unit_lower.like("mcg/mg%"), F.lit("mcg/mg"))
+        # cell-count ladder: Cells/uL <-> Thousand/uL <-> Million/uL
+        .when(
+            unit_lower.like("th%/ul") | unit_lower.like("th%/mcl")
+            | unit_lower.like("%10%3/ul") | unit_lower.like("%10%3/mcl")
+            | unit_lower.rlike(r'^k/[ucm].+$') | unit_lower.rlike(r'^10.3/ul$'),
+            F.lit("Thousand/uL")
+        )
+        .when(unit_lower.rlike(r'^cell.*/[ucm].+$'), F.lit("Cells/uL"))
+        .when(
+            unit_lower.like("m%/ul") | unit_lower.like("m%/mcl") | unit_lower.like("m%/mm3")
+            | unit_lower.rlike(r'^m.*/cu?mm$') | unit_lower.like("%10%6/ul"),
+            F.lit("Million/uL")
+        )
+        # enzyme/antibody activity units
+        .when(unit_lower == "iu/ml", F.lit("International Units/mL"))
+        .when(
+            unit_lower.rlike(r'^u.?iu.?/ml$') | unit_lower.rlike(r'^mc?i?u.*/l$') | (unit_lower == "mciu/ml"),
+            F.lit("uIU/mL")
+        )
+        .when(unit_lower.rlike(r'^.*i?u.*/l$'), F.lit("Unit/L"))
+        .when(unit_lower == "leu/ul", F.lit("Leu/uL"))
+        # electrolytes / catecholamines
+        .when(unit_lower.like("mmo%/l"), F.lit("mmol/L"))
+        .when(unit_lower == "nmol/l", F.lit("nmol/L"))
+        # misc single-unit families
+        .when(unit_lower == "mmhg", F.lit("mmHg"))
+        .when(unit_lower.like("s%"), F.lit("Second(s)"))
+        .when(F.col("unit_source_value").rlike(r'^%.*$'), F.lit("%"))
+        .when(unit_lower == "counts/min", F.lit("Counts/Min"))
+        .when(unit_lower.like("mm/h%"), F.lit("mm/h"))
+        .when(unit_lower == "kg/m^2", F.lit("kg/m^2"))
+        # anthropometrics (height/weight; temperature intentionally excluded, see note below)
+        .when(unit_lower.like("in%"), F.lit("Inches"))
+        .when(unit_lower == "ft", F.lit("Feet"))
+        .when(unit_lower.like("o%"), F.lit("oz"))
+        .when(unit_lower.like("lb%"), F.lit("lb"))
+        .otherwise(F.col("unit_source_value"))
+    )
+
+    # normalize unit
+    df = msmt.withColumn("unit_norm", normalized_unit)
+
+    # perform value conversion to measurement concept mode unit where possible, drop if not possible
+    unit_to_canonical = {
+        # mass-concentration ladder, relative to mg/dL
+        "mg/dL": 1.0,
+        "g/dL": 1000.0,
+        "g/L": 0.01,
+        "mg/L": 0.1,
+        "mg/mL": 100.0,
+        # hormone/protein ladder, relative to pg/mL
+        "pg/mL": 1.0,
+        "ng/L": 1.0,
+        "ng/dL": 10.0,
+        "ng/mL": 1000.0,
+        # microgram ladder, relative to ug/mL
+        "ug/mL": 1.0,
+        "ug/dL": 0.01,
+        # cell-count ladder, relative to Cells/uL
+        "Cells/uL": 1.0,
+        "Thousand/uL": 1000.0,
+        "Million/uL": 1000000.0,
+        # anthropometrics
+        "Inches": 1.0,
+        "Feet": 12.0,
+        "oz": 1.0,
+        "lb": 16.0,
+        # single-unit families: identity, kept so same-unit pairs still resolve via the lookup
+        "Unit/L": 1.0,
+        "International Units/mL": 1.0,
+        "uIU/mL": 1.0,
+        "Leu/uL": 1.0,
+        "mmol/L": 1.0,
+        "nmol/L": 1.0,
+        "mmHg": 1.0,
+        "Second(s)": 1.0,
+        "%": 1.0,
+        "Counts/Min": 1.0,
+        "mm/h": 1.0,
+        "kg/m^2": 1.0,
+        "mcg/mg": 1.0,
+    }
+
+    # create map of normalized unit to conversion factor
+    factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
+
+    # compute the target unit for each row of measurements
+    pair_w = Window.partitionBy("measurement_concept_id", "unit_norm")
+    df = df.withColumn("pair_count", F.count("*").over(pair_w))
+    # tiebreak on unit_norm itself so the mode pick is deterministic when two units are equally common
+    rank_w = Window.partitionBy("measurement_concept_id").orderBy(F.desc("pair_count"), F.col("unit_norm"))
+    df = df.withColumn("unit_rank", F.row_number().over(rank_w))
+    mode_w = Window.partitionBy("measurement_concept_id")
+    df = df.withColumn(
+        "target_unit",
+        F.min(F.when(F.col("unit_rank") == 1, F.col("unit_norm"))).over(mode_w)
+    )
+
+    # perform unit and value conversion for non-mode units
+    df = df.withColumn("factor_from", factor_map[F.col("unit_norm")])
+    df = df.withColumn("factor_to", factor_map[F.col("target_unit")])
+    already_target = F.col("unit_norm") == F.col("target_unit")
+    convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull()
+    success = already_target | convertible
+    value_num = F.try_cast(F.col("value_source_value"), "double")
+    df = df.withColumn(
+        "value_std",
+        F.when(already_target, F.round(value_num, 3))
+         .when(convertible, F.round(value_num * F.col("factor_from") / F.col("factor_to"), 3))
+    )
+    df = df.withColumn(
+        "unit_std",
+        F.when(success, F.col("target_unit"))
+    )
+
+    # reformat columns
+    df = df.drop("pair_count", "unit_rank", "factor_from", "factor_to")
+    df = df.withColumnRenamed("value_std", "value_converted")
+    df = df.withColumnRenamed("unit_std", "unit_converted")
+    df = df.withColumn("std_concept_id", F.col("measurement_concept_id"))
+
+    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to")
 
 # TODO: TEST each measurement type has at most one unit
 # TODO: TEST each measurement id is still present

@@ -28,8 +28,6 @@ def extract_events(df, table, measurements_prestandardized=True):
                 code = concept_id (NOT vocabulary_id/code)
     """
 
-    # TODO: add standardization logic
-
     # fix source val cols
     for col in df.columns:
         if col.endswith("_source_value"):

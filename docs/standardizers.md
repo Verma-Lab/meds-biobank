@@ -1,5 +1,11 @@
 # Standardizers
 
+## Specification
+
+- Guarantee: Each measurement_concept_id corresponds to at most one unit_converted
+- Guarantee: Each measurement_id from the input dataframe is still present (potentially duplicated)
+- Note: Value_converted potentially contains both numeric and textual entries
+
 ## Workflow
 
 1. Homogenize units (adjust values) within designated groups of measurement concept ids (by OMOP concept_ancestor or by OMOP concept_id)
@@ -42,7 +48,7 @@ Outputs: standardized measurements.
 
 # ADDED:
 unit_converted:string
-value_converted:double
+value_converted:object
 std_concept_id:long
 ```
 
