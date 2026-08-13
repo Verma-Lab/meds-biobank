@@ -371,28 +371,42 @@ def create_concept_schema(events, concept, concept_ancestor):
     Returns:
         concept_schema (pyspark.sql.DataFrame):
             Desc: metadata schema for all concepts that can (do!) occur in the data
-            Schema: |concept_id|name|ancestors|
+            Schema: |code|name|ancestors|
+            ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
     """
 
-    # collect ancestors into list (exclude descendant itself)
-    ca = concept_ancestor.filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id")).groupBy("descendant_concept_id").agg(F.collect_list("ancestor_concept_id").alias("ancestors"))
+    # select all concepts and names
+    cn = concept.select("concept_id", "concept_name")
 
-    # connect concept name to concept id
-    ca = ca.join(
-        concept.select("concept_id", "concept_name"),
-        ca.descendant_concept_id == concept.concept_id,
-        "inner"
-    ).drop(ca.descendant_concept_id)
+    # collect (ancestor, distance) pairs into one array of structs — keeps them bound
+    # together so there's no risk of two separate arrays misaligning
+    ca = (
+        concept_ancestor
+        .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
+        .groupBy("descendant_concept_id")
+        .agg(
+            F.collect_list(
+                F.struct("ancestor_concept_id", "min_levels_of_separation")
+            ).alias("ancestors")
+        )
+    )  # descendant_concept_id, ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
+
+    # join to get concept and name together with ancestors
+    cn = cn.join(
+        ca,
+        cn.concept_id == ca.descendant_concept_id,
+        "left"
+    ).drop(ca.descendant_concept_id).withColumnRenamed("concept_name", "name") # concept_id, name, ancestors
 
     # filter results for occurring concepts only
     oc = events.select("code").distinct()
-    ca = ca.join(
+    cn = cn.join(
         oc,
-        ca.concept_id == oc.code,
+        cn.concept_id == oc.code,
         "inner"
-    ).drop(oc.code)
+    ).drop(cn.concept_id)
 
-    return ca
+    return cn
 
 if __name__ == "__main__":
 
