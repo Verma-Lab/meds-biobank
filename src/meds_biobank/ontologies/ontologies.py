@@ -13,15 +13,16 @@ class Ontology():
     def __init__(self):
         self.SPECIAL_CODES = CUSTOM_CONCEPTS
         self.codes = None # e.g. 1203, 1407
-        self.domains = None # e.g. measurement, drug, labs_albumin
+        self.event_types = None # e.g. measurement, drug, observation
         self.qualifiers = None # e.g. phecodes/cardiomyopathy, ATC/class
         self.deciles = None # vals: d0-d10
-        self.code_to_domain = None # e.g. 1203: condition, 1407: labs_albumin
+        self.units = None
+        self.code_to_event_type = None # e.g. 1203: condition, 1407: labs_albumin
         self.code_to_name = None # e.g. 1203: myocardial infarction
         self.code_to_qualifiers = None # e.g. 1203: [phecodes/cardiomyopathy, ATC/class]
         self.code_to_parents = None # e.g. 1203: [1252, 242, 197]
-        self.domain_to_unit = None # e.g. labs_albumin: %
-        self.domain_to_decile_ranges = None # e.g. labs_albumin: d1: (min: x, max: x')
+        self.code_to_unit = None # e.g. labs_albumin: %
+        self.code_to_decile_ranges = None # e.g. labs_albumin: d1: (min: x, max: x')
         self.rollup_map = None # e.g. 10454: 10234123
 
     def compute_concept_ontology(self, events, concept, concept_ancestor, qualifications=None):
@@ -57,10 +58,6 @@ class Ontology():
         )
         self.code_to_domain = {row["code"]: row["domain"] for row in events_temp.collect()} | {v:"visit_flag" for k,v in self.SPECIAL_CODES.items()}
         self.domains = list(set(self.code_to_domain.values()))
-    
-    def normalize_measurements(self, events):
-        # for each measurement concept, label by lab/vital and convert value and unit to standard scale if possible, fallback if not
-        pass
     
     def bin_measurements(self, events):
         """

@@ -360,6 +360,40 @@ def format_events(events):
     """
     return events.orderBy("patient_id", "time")
 
+def create_concept_schema(events, concept, concept_ancestor):
+    """
+    Args:
+        events (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+        concept (pyspark.sql.DataFrame): |concept_id|metadata|
+        concept_ancestor (pyspark.sql.DataFrame): |ancestor_concept_id|descendant_concept_id|min_levels_of_separation|max_levels_of_separation|
+    Returns:
+        concept_schema (pyspark.sql.DataFrame):
+            Desc: metadata schema for all concepts that can (do!) occur in the data
+            Schema: |concept_id|name|ancestors|
+    """
+
+    # collect ancestors into list (exclude descendant itself)
+    ca = concept_ancestor.filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id")).groupBy("descendant_concept_id").agg(F.collect_list("ancestor_concept_id").alias("ancestors"))
+
+    # connect concept name to concept id
+    ca = ca.join(
+        concept.select("concept_id", "concept_name"),
+        ca.descendant_concept_id == concept.concept_id,
+        "inner"
+    ).drop(ca.descendant_concept_id)
+
+    # filter results for occurring concepts only
+    oc = events.select("code").distinct()
+    ca = ca.join(
+        oc,
+        ca.concept_id == oc.code,
+        "inner"
+    ).drop(oc.code)
+
+    return ca
+
 if __name__ == "__main__":
 
     """
