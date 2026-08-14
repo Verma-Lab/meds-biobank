@@ -12,18 +12,20 @@ class Ontology():
 
     def __init__(self):
         self.SPECIAL_CODES = CUSTOM_CONCEPTS
-        self.codes = None # e.g. 1203, 1407
-        self.event_types = None # e.g. measurement, drug, observation
-        self.qualifiers = None # e.g. phecodes/cardiomyopathy, ATC/class
-        self.bins = None # vals: d0-d10
+        self.codes = None
+        self.domain_ancestors = None
+        self.event_types = None
+        self.qualifiers = None
+        self.bins = None
         self.units = None
-        self.code_to_event_type = None # e.g. 1203: condition, 1407: labs_albumin
-        self.code_to_name = None # e.g. 1203: myocardial infarction
-        self.code_to_qualifiers = None # e.g. 1203: [phecodes/cardiomyopathy, ATC/class]
-        self.code_to_ancestors = None # e.g. 1203: [1252, 242, 197]
-        self.code_to_unit = None # e.g. labs_albumin: %
-        self.code_to_bin_ranges = None # e.g. labs_albumin: d1: (min: x, max: x')
-        self.rollup_map = None # e.g. 10454: 10234123
+        self.code_to_event_type = None
+        self.code_to_name = None
+        self.code_to_qualifiers = None
+        self.code_to_ancestors = None
+        self.code_to_domain_ancestors = None
+        self.code_to_unit = None
+        self.code_to_bin_ranges = None
+        self.rollup_map = {}
 
     def compute_concept_ontology(self, events, concept_schema, qualifiers=None):
         """
@@ -48,6 +50,7 @@ class Ontology():
 
             # init maps
             self.codes = set()
+            self.domain_ancestors = set()
             self.event_types = set()
             self.qualifiers = set()
             self.bins = set()
@@ -56,10 +59,13 @@ class Ontology():
             self.code_to_name = {}
             self.code_to_qualifiers = {}
             self.code_to_ancestors = {}
+            self.code_to_domain_ancestors = {}
             self.code_to_unit = {}
 
             # build flat lists
             self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
+            for row in concept_schema.collect():
+                self.domain_ancestors.update(set(row["domain_ancestors"]))
             self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
             if qualifiers is not None:
                 self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
@@ -82,11 +88,15 @@ class Ontology():
             }
             code_to_unit_df = events.filter(F.col("event_type") == "measurement").groupBy("code").agg(F.first("unit").alias("unit"))
             self.code_to_unit = {row["code"]:row["unit"] for row in code_to_unit_df.collect()}
+
+            # build code_to_domain_ancestors
+            self.code_to_domain_ancestors = {row["code"]: list(row["domain_ancestors"]) for row in concept_schema.select("code", "domain_ancestors").collect()}
         
         except Exception:
 
             # de-init maps
             self.codes = None
+            self.domain_ancestors = None
             self.event_types = None
             self.qualifiers = None
             self.bins = None
@@ -95,6 +105,7 @@ class Ontology():
             self.code_to_name = None
             self.code_to_qualifiers = None
             self.code_to_ancestors = None
+            self.code_to_domain_ancestors
             self.code_to_unit = None
 
             # error
@@ -172,7 +183,7 @@ class Ontology():
         """
 
         try:
-            # init map
+            # re-init map
             self.rollup_map = {}
 
             # count frequency of every occurent concept wrt patient id
@@ -181,14 +192,9 @@ class Ontology():
             # get list of concepts that are below threshold: these will be dropped from the ontology
             below_thresh = [row["code"] for row in cf.filter(F.col("prop") < threshold).select("code").collect()]
 
-            # drop codes from ontology if they are below thresh
+            # drop code from codes if below thresh (remains in other ontology fields)
             for bt in below_thresh:
                 self.codes.discard(bt)
-                self.code_to_event_type.pop(bt, None)
-                self.code_to_name.pop(bt, None)
-                self.code_to_qualifiers.pop(bt, None)
-                self.code_to_ancestors.pop(bt, None)
-
 
             # explode concept schema to have unique row for each code, ancestor
             cs_exp = concept_schema.select(
@@ -224,7 +230,9 @@ class Ontology():
             self.rollup_map = {row["code"]: row["ancestor"] for row in cs_exp.collect()}
         
         except Exception:
-            self.rollup_map = None
+
+            # re-init map
+            self.rollup_map = {}
             raise
     
     def load_from_disk(self, ontology_data_dir, overwrite=True):
@@ -239,6 +247,7 @@ class Ontology():
         # list of structures
         sets = [
             "codes",
+            "omain_ancestors",
             "event_types",
             "qualifiers",
             "bins",
@@ -249,6 +258,7 @@ class Ontology():
             "code_to_name",
             "code_to_qualifiers",
             "code_to_ancestors",
+            "code_to_domain_ancestors",
             "code_to_unit",
             "code_to_bin_ranges",
             "rollup_map"
@@ -257,6 +267,10 @@ class Ontology():
         # guard against overwrite false and ontology already read in
         if not overwrite:
             for struct in sets + maps:
+                if struct == "rollup_map":
+                    if getattr(self, struct) is not {}:
+                        raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
+                    continue
                 if getattr(self, struct) is not None:
                     raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
 
@@ -306,7 +320,7 @@ class Ontology():
             self.code_to_ancestors = None
             self.code_to_unit = None
             self.code_to_bin_ranges = None
-            self.rollup_map = None
+            self.rollup_map = {}
             raise
 
     
@@ -322,6 +336,7 @@ class Ontology():
         # list of structures
         sets = [
             "codes",
+            "domain_ancestors",
             "event_types",
             "qualifiers",
             "bins",
@@ -332,6 +347,7 @@ class Ontology():
             "code_to_name",
             "code_to_qualifiers",
             "code_to_ancestors",
+            "code_to_domain_ancestors",
             "code_to_unit",
             "code_to_bin_ranges",
             "rollup_map"
