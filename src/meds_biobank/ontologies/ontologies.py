@@ -2,14 +2,10 @@ import pyspark.sql.functions as F
 from pyspark.sql import Window
 import json
 import os
-from meds_biobank import concepts
-
-CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 class Ontology():
 
     def __init__(self):
-        self.SPECIAL_CODES = CUSTOM_CONCEPTS
         self.codes = None
         self.domain_ancestors = None
         self.event_types = None

@@ -4,15 +4,16 @@ class Tokenizer():
 
     # TODO: implement body
 
-    # TODO: add option to perform heirarchichal tokenization of codes based on domain ancestors (allow specification of event types)
-
     def __init__(
         self,
         ontology,
         return_qualifiers=False,
         return_event_types=False,
+        return_domain_ancestors=False,
+        rollout=False,
         return_times=False,
-        time_method=None
+        time_method=None,
+        domain_ancestor_event_types=[]
     ):
         """
         Args:
@@ -22,10 +23,16 @@ class Tokenizer():
                 Desc: whether to return qualifier concepts
             return_event_types (bool):
                 Desc: whether to return event types
+            return_domain_ancestors (bool):
+                Desc: whether to return domain ancestors
+            rollout (bool):
+                Desc: whether to rollout tokenize using quals, event types, and domain_ancestors
             return_times (bool):
                 Desc: whether to return times
             time_method (string): exact, approximate
                 Desc: if set, method to use for tokenizing times, otherwise simply return times
+            domain_ancestor_event_types (List<string>):
+                Desc: list of event types for which to return domain ancestors
         """
 
         # basic guard
@@ -35,6 +42,18 @@ class Tokenizer():
         # ensure time_method is not set without return_times True
         if time_method is not None and return_times is False:
             raise Exception("Error: tokenizer.__init__(): time_method is set even though return_times is False.")
+        
+        # ensure domain_ancestor_event_types is not set while retrun_domain_ancestors is False
+        if len(domain_ancestor_event_types) != 0 and not return_domain_ancestors:
+            raise Exception("Error: tokenizer.__init__(): domain_ancestor_event_types selected but return_domain_ancestors is False.")
+        
+        # other case
+        if len(domain_ancestor_event_types) == 0 and return_domain_ancestors:
+            raise Exception("Error: tokenizer.__init__(): domain_ancestor_eventy_types not set but return_domain_ancestors is True.")
+        
+        # another
+        if rollout but not (return_qualifiers or return_event_types or return_domain_ancestors):
+            raise Exception("Error: tokenizer.__init__(): rollout True but nothing to rollout.")
 
         # set instance variables
         self.ontology = ontology

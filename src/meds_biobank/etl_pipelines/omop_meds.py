@@ -140,6 +140,7 @@ def extract_events(df, table, measurements_prestandardized=True):
             .selectExpr("*", f"stack({len(flags)}, {stack_args}) as (code, value)")
             .drop(*flags)
             .filter(F.col("value") == 1)
+            .withColumn("code", mapping_expr[F.col("code")])
             .withColumn("event_type", F.lit("visit_flag"))
             .withColumn("visit_id", F.col("visit_occurrence_id"))
             .select("patient_id", "time", "code", "event_type", "visit_id")
@@ -455,6 +456,18 @@ def create_concept_schema(events, concept, concept_ancestor):
         cn.concept_id == oc.code,
         "inner"
     ).drop(cn.concept_id)
+
+    # add special concepts (e.g. visit flags): only add ones not already present
+    special_df = (
+        events.sparkSession.createDataFrame(
+            [(code, name) for name, code in CUSTOM_CONCEPTS.items()],
+            ["code", "name"]
+        )
+        .withColumn("ancestors", F.lit(None).cast(cn.schema["ancestors"].dataType))
+        .withColumn("domain_ancestors", F.lit(None).cast(cn.schema["domain_ancestors"].dataType))
+        .join(cn.select("code"), on="code", how="left_anti")
+    )
+    cn = cn.unionByName(special_df)
 
     return cn
 
