@@ -371,11 +371,9 @@ def create_concept_schema(events, concept, concept_ancestor):
     Returns:
         concept_schema (pyspark.sql.DataFrame):
             Desc: metadata schema for all concepts that can (do!) occur in the data
-            Schema: |code|name|ancestors|
+            Schema: |code|name|ancestors|domain_ancestors|
             ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
     """
-
-    # TODO: add domain_ancestors to schema
 
     # select all concepts and names
     cn = concept.select("concept_id", "concept_name")
@@ -399,6 +397,24 @@ def create_concept_schema(events, concept, concept_ancestor):
         cn.concept_id == ca.descendant_concept_id,
         "left"
     ).drop(ca.descendant_concept_id).withColumnRenamed("concept_name", "name") # concept_id, name, ancestors
+
+    # collect all ancestors based on domain
+    cad = (
+        concept_ancestor
+        .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
+        .groupBy("descendant_concept_id")
+        .agg(
+            F.collect_list(F.col("ancestor_concept_id")).alias("domain_ancestors")
+        )
+        .withColumnRenamed("descendant_concept_id", "concept_id")
+    ) # concept_id, domain_ancestors
+
+    # join to concept, name, ancestor df
+    cn = cn.join(
+        cad,
+        cn.concept_id == cad.concept_id,
+        "left"
+    ).drop(cad.concept_id)
 
     # filter results for occurring concepts only
     oc = events.select("code").distinct()

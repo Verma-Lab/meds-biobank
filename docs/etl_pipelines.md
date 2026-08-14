@@ -45,7 +45,7 @@ visit_id (string): id of the visit (OMOP visit_occurrence_id) if this makes sens
 # required fields
 |code|ancestors|domain_ancestors|name|
 code (long): OMOP concept id
-ancestors (list<long>): OMOP concept ids of ancestors
+ancestors (list<tuple<long, int>>): tuples OMOP concept id of ancestor, ontological distance
 domain_ancestors (list<long>): OMOP concept ids of ancestors in the same domain as the code
 name (string): concept name
 ```
