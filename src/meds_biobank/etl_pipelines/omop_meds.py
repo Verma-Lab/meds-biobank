@@ -353,6 +353,7 @@ def format_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
+    # TODO: within time, shift visit events to correct locations
     return events.orderBy("patient_id", "time")
 
 def create_concept_schema(events, concept, concept_ancestor):

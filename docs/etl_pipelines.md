@@ -39,6 +39,10 @@ unit (string): unit of the event if it is a measurement (or observation) with a 
 visit_id (string): id of the visit (OMOP visit_occurrence_id) if this makes sense (does for most events but not demographics)
 ```
 
+- Requirement: every event that went in, comes out
+- Requirement: results are ordered by patient, then time
+- Future requirement: visit occurence and flag events at beginning of timestamp, visit end at end?
+
 2. MEDS ConceptSchema
 
 ```bash
@@ -46,9 +50,11 @@ visit_id (string): id of the visit (OMOP visit_occurrence_id) if this makes sens
 |code|ancestors|domain_ancestors|name|
 code (long): OMOP concept id
 ancestors (list<tuple<long, int>>): tuples OMOP concept id of ancestor, ontological distance
-domain_ancestors (list<long>): OMOP concept ids of ancestors in the same domain as the code
+domain_ancestors (list<long>): OMOP concept ids of ancestors in the same domain as the code, in order of distance from code (ascending) [this is a "decomposition" of the code]
 name (string): concept name
 ```
+
+- Requirement: every occurrent code is in ConceptSchema but not the non-occurrent ones
 
 3. MEDS SplitSchema
 
@@ -59,6 +65,24 @@ patient_id (string): unique hashed id for patient
 task_split (string): model_train/model_val/model_test/task
 ```
 
+- Requirement: task train/val/test split is deterministic based on patient id (still seeded random)
+- Requirement: splits according to specified proportion
+
+4. MEDS TaskSchema
+
+```bash
+# required fields
+|patient_id|task_split|prediction_date|label|
+patient_id (string): unique hashed id for patient
+task_split (string): train/val/test
+prediction_date (timestamp): cutoff date to truncate patient journey context
+label (boolean/int/float/string): the label to predict for this patient
+metalabels (any type): used to define subgroups for performance analysis
+```
+
+- Requirement: task train/val/test split is deterministic based on patient id (still seeded random)
+- Requirement: splits according to specified proportion
+
 ### Workflow
 
 1. Extract all events
@@ -66,19 +90,6 @@ task_split (string): model_train/model_val/model_test/task
 3. Prune / deduplicate patient event streams
 4. Post-process value fields
 5. Order event streams by patient, time
-
-### Output Format
-
-- |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-- patient_id: id of the patient
-- code: OMOP concept id. Unless explicitly specified via boolean flag, use standardized OMOP concept id. Otherwise try to use source concept id.
-- time: time of event. coalesce in order (start datetime, start date, datetime date)
-- end: (optional) end time of event. Coalesce in order (end datetime, end date).
-- numeric_value: contains source value cast to numeric if possible
-- text_value: contains source value as string if numeric cast fails
-- unit: contains source unit
-- event_type: source OMOP domain for the table contianing the event (e.g. measurement, procedure, etc.)
-- visit_id: id of visit that generated the event
 
 ### Supported Tables
 
