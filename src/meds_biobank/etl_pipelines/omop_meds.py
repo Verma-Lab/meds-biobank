@@ -258,11 +258,6 @@ def extract_events(df, table, measurements_prestandardized=True):
 
 def gather_events(event_dfs):
     """
-    Desc:
-        Compile separate events tables into a single table
-        event_dfs is a list of dfs which are events acc. schema
-        event_dfs EXCLUDES measurements
-        if labs or vitals are present, only add rows from measurement that are not already in them, as their values are higher-quality
     Args:
         event_dfs (List<pyspark.sql.DataFrame>):
             Desc: 
@@ -398,9 +393,36 @@ def create_concept_schema(events, concept, concept_ancestor):
         "left"
     ).drop(ca.descendant_concept_id).withColumnRenamed("concept_name", "name") # concept_id, name, ancestors
 
-    # collect all ancestors based on domain
+    # join domain to descendants
+    ca_domain_scoped = (
+        concept_ancestor.select("ancestor_concept_id", "descendant_concept_id")
+        .join(
+            concept.select("concept_id", "domain_id"),
+            concept_ancestor.descendant_concept_id == concept.concept_id,
+            "inner"
+        )
+        .drop(concept.concept_id)
+        .withColumnRenamed("domain_id", "descendant_domain")
+    ) # ancestor_concept_id, descendant_concept_id, descendant_domain
+
+    # join domain to ancestors
+    ca_domain_scoped = (
+        ca_domain_scoped
+        .join(
+            concept.select("concept_id", "domain_id"),
+            ca_domain_scoped.ancestor_concept_id == concept.concept_id,
+            "inner"
+        )
+        .drop(concept.concept_id)
+        .withColumnRenamed("domain_id", "ancestor_domain")
+    ) # ancestor_concept_id, descendant_concept_id, descendant_domain, ancestor_domain
+
+    # filter where ancestor domain = descendant domain
+    ca_domain_scoped = ca_domain_scoped.filter(F.col("descendant_domain") == F.col("ancestor_domain")).drop("descendant_domain", "ancestor_domain") # ancestor_concept_id, descendant_concept_id
+
+    # group domain ancestors by concept
     cad = (
-        concept_ancestor
+        ca_domain_scoped
         .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
         .groupBy("descendant_concept_id")
         .agg(
@@ -471,7 +493,7 @@ if __name__ == "__main__":
     # extract events
     event_dfs = []
     for table, name in zip(tables, table_names):
-        result = extract_events(table, name)
+        result = extract_events(table, name, measurements_prestandardized=False)
         event_dfs.append(result)
 
     # gather events together

@@ -103,7 +103,7 @@ class Ontology():
             self.code_to_name = None
             self.code_to_qualifiers = None
             self.code_to_ancestors = None
-            self.code_to_domain_ancestors
+            self.code_to_domain_ancestors = None
             self.code_to_unit = None
 
             # error
@@ -245,7 +245,7 @@ class Ontology():
         # list of structures
         sets = [
             "codes",
-            "omain_ancestors",
+            "domain_ancestors",
             "event_types",
             "qualifiers",
             "bins",
@@ -266,7 +266,7 @@ class Ontology():
         if not overwrite:
             for struct in sets + maps:
                 if struct == "rollup_map":
-                    if getattr(self, struct) is not {}:
+                    if getattr(self, struct) != {}:
                         raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
                     continue
                 if getattr(self, struct) is not None:
@@ -279,6 +279,7 @@ class Ontology():
         
         # if we get here, init maps
         self.codes = set()
+        self.domain_ancestors = set()
         self.event_types = set()
         self.qualifiers = set()
         self.bins = set()
@@ -287,6 +288,7 @@ class Ontology():
         self.code_to_name = {}
         self.code_to_qualifiers = {}
         self.code_to_ancestors = {}
+        self.code_to_domain_ancestors = {}
         self.code_to_unit = {}
         self.code_to_bin_ranges = {}
         self.rollup_map = {}
@@ -308,6 +310,7 @@ class Ontology():
 
             # de-init maps
             self.codes = None
+            self.domain_ancestors = None
             self.event_types = None
             self.qualifiers = None
             self.bins = None
@@ -316,6 +319,7 @@ class Ontology():
             self.code_to_name = None
             self.code_to_qualifiers = None
             self.code_to_ancestors = None
+            self.code_to_domain_ancestors = None
             self.code_to_unit = None
             self.code_to_bin_ranges = None
             self.rollup_map = {}
@@ -366,7 +370,7 @@ class Ontology():
         for struct in sets:
             path = os.path.join(ontology_data_dir, struct + ".json")
             with open(path, "w") as file:
-                json.dump(getattr(self, list(struct)), file, indent=4)
+                json.dump(list(getattr(self, struct)), file, indent=4)
         for struct in maps:
             path = os.path.join(ontology_data_dir, struct + ".json")
             with open(path, "w") as file:
