@@ -395,7 +395,7 @@ def create_concept_schema(events, concept, concept_ancestor):
 
     # join domain to descendants
     ca_domain_scoped = (
-        concept_ancestor.select("ancestor_concept_id", "descendant_concept_id")
+        concept_ancestor.select("ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation")
         .join(
             concept.select("concept_id", "domain_id"),
             concept_ancestor.descendant_concept_id == concept.concept_id,
@@ -417,19 +417,28 @@ def create_concept_schema(events, concept, concept_ancestor):
         .withColumnRenamed("domain_id", "ancestor_domain")
     ) # ancestor_concept_id, descendant_concept_id, descendant_domain, ancestor_domain
 
+    # filter out trivial rows
+    ca_domain_scoped = ca_domain_scoped.filter(F.col("ancestor_concept_id") != F.col("descendant_concept_id"))
+
     # filter where ancestor domain = descendant domain
     ca_domain_scoped = ca_domain_scoped.filter(F.col("descendant_domain") == F.col("ancestor_domain")).drop("descendant_domain", "ancestor_domain") # ancestor_concept_id, descendant_concept_id
 
-    # group domain ancestors by concept
+    # group domain ancestors by concept (resulting arrays are ordered by specificity -> decreasing)
     cad = (
         ca_domain_scoped
-        .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
         .groupBy("descendant_concept_id")
         .agg(
-            F.collect_list(F.col("ancestor_concept_id")).alias("domain_ancestors")
+            F.sort_array(
+                F.collect_list(F.struct("min_levels_of_separation", "ancestor_concept_id"))
+            ).alias("sorted_pairs")
         )
+        .withColumn(
+            "domain_ancestors",
+            F.transform("sorted_pairs", lambda x: x["ancestor_concept_id"])
+        )
+        .drop("sorted_pairs")
         .withColumnRenamed("descendant_concept_id", "concept_id")
-    ) # concept_id, domain_ancestors
+    )
 
     # join to concept, name, ancestor df
     cn = cn.join(
