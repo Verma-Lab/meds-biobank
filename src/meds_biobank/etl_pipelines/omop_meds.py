@@ -375,6 +375,8 @@ def create_concept_schema(events, concept, concept_ancestor):
             ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
     """
 
+    # TODO: add domain_ancestors to schema
+
     # select all concepts and names
     cn = concept.select("concept_id", "concept_name")
 

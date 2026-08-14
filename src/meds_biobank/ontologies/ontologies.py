@@ -7,8 +7,8 @@ from meds_biobank import concepts
 CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 class Ontology():
-    
-    # TODO: rework given upstream changes to standardization/etl, move codes to a global config file
+
+    # TODO: include domain ancestors in codes
 
     def __init__(self):
         self.SPECIAL_CODES = CUSTOM_CONCEPTS
@@ -47,11 +47,11 @@ class Ontology():
         try:
 
             # init maps
-            self.codes = {}
-            self.event_types = {}
-            self.qualifiers = {}
-            self.bins = {}
-            self.units = {}
+            self.codes = set()
+            self.event_types = set()
+            self.qualifiers = set()
+            self.bins = set()
+            self.units = set()
             self.code_to_event_type = {}
             self.code_to_name = {}
             self.code_to_qualifiers = {}
@@ -59,12 +59,12 @@ class Ontology():
             self.code_to_unit = {}
 
             # build flat lists
-            self.codes = [row["code"] for row in concept_schema.select("code").distinct().collect()]
-            self.event_types = [row["event_type"] for row in events.select("event_type").distinct().collect()]
+            self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
+            self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
             if qualifiers is not None:
-                self.qualifiers = [row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()]
-            self.bins = [f"bin-{i}" for i in range(11)]
-            self.units = [row["unit"] for row in events.filter(F.col("event_type") == "measurement").select("unit").distinct().collect()]
+                self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
+            self.bins = {f"bin-{i}" for i in range(11)}
+            self.units = {row["unit"] for row in events.filter(F.col("event_type") == "measurement").select("unit").distinct().collect()}
 
             # build maps
             code_to_event_type_df = events.groupBy("code").agg(F.first("event_type").alias("event_type"))
@@ -176,7 +176,19 @@ class Ontology():
             self.rollup_map = {}
 
             # count frequency of every occurent concept wrt patient id
-            cf = events.groupBy("code").agg((F.countDistinct("patient_id") / events.select("patient_id").distinct().count()).alias("prop")) # code, prop (percent of patients with this code)
+            cf = events.filter(F.col("event_type") != "measurement").groupBy("code").agg((F.countDistinct("patient_id") / events.select("patient_id").distinct().count()).alias("prop")) # code, prop (percent of patients with this code)
+
+            # get list of concepts that are below threshold: these will be dropped from the ontology
+            below_thresh = [row["code"] for row in cf.filter(F.col("prop") < threshold).select("code").collect()]
+
+            # drop codes from ontology if they are below thresh
+            for bt in below_thresh:
+                self.codes.discard(bt)
+                self.code_to_event_type.pop(bt, None)
+                self.code_to_name.pop(bt, None)
+                self.code_to_qualifiers.pop(bt, None)
+                self.code_to_ancestors.pop(bt, None)
+
 
             # explode concept schema to have unique row for each code, ancestor
             cs_exp = concept_schema.select(
@@ -225,12 +237,14 @@ class Ontology():
             raise Exception(f"Error: ontologies.load_from_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        structures = [
+        sets = [
             "codes",
             "event_types",
             "qualifiers",
             "bins",
-            "units",
+            "units"
+        ]
+        maps = [
             "code_to_event_type",
             "code_to_name",
             "code_to_qualifiers",
@@ -242,21 +256,21 @@ class Ontology():
 
         # guard against overwrite false and ontology already read in
         if not overwrite:
-            for struct in structures:
+            for struct in sets + maps:
                 if getattr(self, struct) is not None:
                     raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
 
         # guard against structure files do not exist
-        for struct in structures:
+        for struct in sets + maps:
             if not os.path.exists(os.path.join(ontology_data_dir, struct + ".json")):
                 raise Exception(f'Error: ontologies.load_from_disk: File {struct + ".json"} does not exist to read from.')
         
         # if we get here, init maps
-        self.codes = {}
-        self.event_types = {}
-        self.qualifiers = {}
-        self.bins = {}
-        self.units = {}
+        self.codes = set()
+        self.event_types = set()
+        self.qualifiers = set()
+        self.bins = set()
+        self.units = set()
         self.code_to_event_type = {}
         self.code_to_name = {}
         self.code_to_qualifiers = {}
@@ -268,7 +282,12 @@ class Ontology():
         # try to read
         try:
             
-            for struct in structures:
+            for struct in sets:
+                path = os.path.join(ontology_data_dir, f"{struct}.json")
+                with open(path, "r") as file:
+                    setattr(self, struct, set(json.load(file)))
+            
+            for struct in maps:
                 path = os.path.join(ontology_data_dir, f"{struct}.json")
                 with open(path, "r") as file:
                     setattr(self, struct, json.load(file))
@@ -301,12 +320,14 @@ class Ontology():
             raise Exception(f"Error: ontologies.save_to_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        structures = [
+        sets = [
             "codes",
             "event_types",
             "qualifiers",
             "bins",
-            "units",
+            "units"
+        ]
+        maps = [
             "code_to_event_type",
             "code_to_name",
             "code_to_qualifiers",
@@ -317,18 +338,22 @@ class Ontology():
         ]
 
         # guard against one of the ontology fields is None
-        for struct in structures:
+        for struct in sets + maps:
             if getattr(self, struct) is None:
                 raise Exception(f"Error: ontologies.save_to_disk: Required ontology field {struct} is unloaded (=None).")
 
         # guard against overwrite set to False and files already exist
         if not overwrite:
-            for struct in structures:
+            for struct in sets + maps:
                 if os.path.exists(os.path.join(ontology_data_dir, struct + ".json")):
                     raise Exception(f'Error: ontologies.save_to_disk: Overwrite set to False but {struct + ".json"} exists already.')
 
         # try to write
-        for struct in structures:
+        for struct in sets:
+            path = os.path.join(ontology_data_dir, struct + ".json")
+            with open(path, "w") as file:
+                json.dump(getattr(self, list(struct)), file, indent=4)
+        for struct in maps:
             path = os.path.join(ontology_data_dir, struct + ".json")
             with open(path, "w") as file:
                 json.dump(getattr(self, struct), file, indent=4)
