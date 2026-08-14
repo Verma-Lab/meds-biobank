@@ -8,8 +8,6 @@ CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
 
 class Ontology():
 
-    # TODO: include domain ancestors in codes
-
     def __init__(self):
         self.SPECIAL_CODES = CUSTOM_CONCEPTS
         self.codes = None
