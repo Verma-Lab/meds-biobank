@@ -6,13 +6,6 @@
 - Guarantee: Each measurement_id from the input dataframe is still present (potentially duplicated)
 - Note: Value_converted potentially contains both numeric and textual entries
 
-## Workflow
-
-1. Homogenize units (adjust values) within designated groups of measurement concept ids (by OMOP concept_ancestor or by OMOP concept_id)
-2. Perform fallback logic for other measurement types (current: set = None)
-3. Union all results and return edited msmt df
-NOTE: measurement_id will no longer be unique! This is intended. NEVER de-deuplicate on measurement_id POST-standardization.
-
 ## Schemas
 
 ### OMOP measurements
@@ -51,6 +44,13 @@ unit_converted:string
 value_converted:object
 std_concept_id:long
 ```
+
+## Workflow
+
+1. Homogenize units (adjust values) within designated groups of measurement concept ids (by OMOP concept_ancestor or by OMOP concept_id)
+2. Perform fallback logic for other measurement types (current: set = None)
+3. Union all results and return edited msmt df
+NOTE: measurement_id will no longer be unique! This is intended. NEVER de-deuplicate on measurement_id POST-standardization.
 
 ## Covered Measurements
 
