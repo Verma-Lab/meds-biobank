@@ -3,10 +3,11 @@ from pyspark.sql import Window
 from meds_biobank import concepts
 from meds_biobank.standardizers.standardizers import standardize
 
-OMOP_BIRTH = concepts.OMOP_BIRTH
-OMOP_DEATH = concepts.OMOP_DEATH
-OMOP_INPATIENT = concepts.OMOP_INPATIENT
-CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
+PMBB_BIRTH = concepts.PMBB_BIRTH
+PMBB_DEATH = concepts.PMBB_DEATH
+PMBB_INPATIENT = concepts.PMBB_INPATIENT
+VISIT_FLAGS = concepts.VISIT_FLAGS
+SPECIAL_CONCEPTS = concepts.SPECIAL_CONCEPTS
 
 def extract_events(df, table, measurements_prestandardized=True):
     """
@@ -45,7 +46,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         # get birth events
         birth_events = (
             events
-            .withColumn("concept_id", F.lit(OMOP_BIRTH))
+            .withColumn("concept_id", F.lit(PMBB_BIRTH))
             .withColumn("event_type", F.lit("birth"))
             .select("patient_id", "time", "concept_id", "event_type")
         )
@@ -86,7 +87,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         # get death events
         events = (
             events
-            .withColumn("concept_id", F.lit(OMOP_DEATH))
+            .withColumn("concept_id", F.lit(PMBB_DEATH))
             .withColumn("time", F.to_timestamp(F.col("death_date")))
             .withColumn("event_type", F.lit("death"))
             .select("patient_id", "time", "concept_id", "event_type")
@@ -131,7 +132,7 @@ def extract_events(df, table, measurements_prestandardized=True):
     
     # handle visit occurrence supplement
     elif table == "visit_occurrence_supplement":
-        flags = list(CUSTOM_CONCEPTS.keys())
+        flags = list(VISIT_FLAGS.keys())
         stack_args = ", ".join(f"'{c}', {c}" for c in flags)
         mapping_expr = F.create_map([F.lit(x) for pair in CUSTOM_CONCEPTS.items() for x in pair])
         events = (
@@ -354,7 +355,6 @@ def format_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
-    # TODO: within time, shift visit events to correct locations
     return events.orderBy("patient_id", "time")
 
 def create_concept_schema(events, concept, concept_ancestor):
@@ -460,7 +460,7 @@ def create_concept_schema(events, concept, concept_ancestor):
     # add special concepts (e.g. visit flags): only add ones not already present
     special_df = (
         events.sparkSession.createDataFrame(
-            [(code, name) for name, code in CUSTOM_CONCEPTS.items()],
+            [(code, name) for name, code in SPECIAL_CONCEPTS.items()],
             ["code", "name"]
         )
         .withColumn("ancestors", F.lit(None).cast(cn.schema["ancestors"].dataType))

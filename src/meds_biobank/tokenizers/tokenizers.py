@@ -1,9 +1,9 @@
 from meds_biobank.ontologies.ontologies import Ontology
 import math
 
-class BaseTokenizer():
+SPECIAL_TOKENS = ["BOS", "BOV"]
 
-    # TODO: implement body
+class BaseTokenizer():
 
     def __init__(
         self,
@@ -57,6 +57,11 @@ class BaseTokenizer():
                 self.symbol_to_id[bin] = self.next_id
                 self.next_id += 1
 
+            # add special tokens
+            for st in SPECIAL_TOKENS:
+                self.symbol_to_id[st] = self.next_id
+                next_id += 1
+
             # add qualifiers if requested
             if self.qualifiers:
                 for qual in self.ontology.qualifiers:
@@ -95,20 +100,42 @@ class BaseTokenizer():
             ...
         """
 
-        # init token list
+        # init token list, add BOS
         tokens = {
-            "codes": [],
-            "times": []
+            "codes": [self.symbol_to_id["BOS"]],
+            "times": [None]
         }
         if self.qualifiers:
-            tokens["qualifiers"] = []
+            tokens["qualifiers"] = [None]
         if self.event_types:
-            tokens["event_types"] = []
+            tokens["event_types"] = [None]
         if self.factors:
-            tokens["factors"] = []
+            tokens["factors"] = [None]
+        if self.event_types:
+            tokens["event_types"] = [None]
+        
+        # init tracking var
+        last_visit_id = -1
 
         # iterate through events
         for event in events:
+
+            # if new visit, add BOV token
+            if event["visit_id"] is not None:
+                if event["visit_id"] != last_visit_id:
+
+                    # add tokens
+                    tokens["codes"].append(self.symbol_to_id["BOV"])
+                    tokens["times"].append(event["time"])
+                
+                    # rollout fields
+                    if self.qualifiers:
+                        tokens["qualifiers"].append(None)
+                    if self.event_types:
+                        tokens["event_types"].append(None)
+                    if self.factors:
+                        tokens["factors"].append(None)
+                    last_visit_id = event["visit_id"]
 
             # extract primary code
             code = event["code"]
@@ -160,62 +187,178 @@ class BaseTokenizer():
 
             # handle times
             tokens["times"].append(event["time"])
-            if self.value_token is not None:
+            if value_token is not None:
                 tokens["times"].append(None)
 
-
-            # TODO: handle factors if requested
+            # handle factors if requested
             if self.factors:
-                pass
+                factor_codes = self.ontology.code_to_factors[code]
+                factor_tokens = []
+                for fc in factor_codes:
+                    factor_tokens.append(self.symbol_to_id[fc])
+                tokens["factors"].append(factor_tokens)
+                if value_token is not None:
+                    tokens["factors"].append(None)
 
-            # TODO: handle qualifiers if requested
+            # handle qualifiers if requested
             if self.qualifiers:
-                pass
-                
+                qualifiers = self.ontology.code_to_qualifiers[code]
+                qualifier_tokens = []
+                for qual in qualifiers:
+                    qualifier_tokens.append(self.symbol_to_id[qual])
+                tokens["qualifiers"].append(qualifier_tokens)
+                if value_token is not None:
+                    tokens["qualifiers"].append(None)
+            
+            # handle event types
+            if self.event_types:
+                event_type_code = event["event_type"]
+                event_type_token = self.symbol_to_id[event_type_token]
+                tokens["event_types"].append(event_type_token)
+                if value_token is not None:
+                    tokens["event_types"].append(None)
+            
+            return tokens
             
 
     def detokenize(self, tokens):
         """
         Args:
-            ...
+            tokens (Dict<List<int>>)
         Returns:
             events (List<Dict>): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id| (single patient)
         """
-        pass
+
+        # init events
+        events = []
+
+        # register length of codes (tokens)
+        n = len(tokens["codes"])
+
+        # begin counter
+        i = 0
+
+        # init visit id
+        visit_id = 0
+
+        # iterate through code tokens
+        while i < n:
+            
+            # extract predicted code
+            code_token = tokens["codes"][i]
+            code = self.id_to_symbol[code_token]
+
+            # handle beginning of visit
+            if code == "BOV":
+                visit_id += 1
+                i += 1
+                continue
+            
+            # skip beginning of sequence
+            if code == "BOS":
+                continue
+
+            # init blank event
+            event = {
+                "patient_id": None,
+                "code": None,
+                "time": None,
+                "end": None,
+                "numeric_value": None,
+                "text_value": None,
+                "unit": None,
+                "event_type": None,
+                "visit_id": None
+            }
+
+            # set event code
+            event["code"] = code
+
+            # set event time
+            event["time"] = tokens["times"][i]
+
+            # set event event_type
+            event[event_type] = self.ontology.code_to_event_type[code]
+
+            # set event numeric_value and unit
+            if i <= (n-2):
+
+                # if next token is a decile bin
+                next_token = tokens["codes"][i+1]
+                next_token_code = self.ontology.id_to_symbol[next_token]
+                if next_token_code.startswith("bin_"):
+
+                    # if we can translate bins for this code
+                    if code in self.ontology.code_to_bin_ranges:
+
+                        # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
+                        bin_int = int(next_token_code.split(".")[1]
+                        mini = float(self.ontology.code_to_bin_ranges[code][bin_int]["min"])
+                        maxi = float(self.ontology.code_to_bin_ranges[code][bin_int]["max"])
+                        event["numeric_value"] = (mini+maxi)/2
+                        event["unit"] = self.ontology.code_to_unit[code]
+                        i += 2
+                        continue
+
+            # increment counter for manual loop
+            i += 1
 
 class TimeTokenizer():
     def __init__(base_tokenizer, method="approximate"):
+
+        # TODO: guard against type errors
+
+        # TODO: guard against invalid method arguments
+
+        # TODO: ensure that base tokenizer has already set vocab
+
+        # init fields
         self.base_tokenizer = base_tokenizer
         self.method = method
 
     def augment_vocab(self):
 
-        # TODO: edit references to be to self.ontology, add tokenize and decode method
-
         # add exact time bins if exact time passage method chosen
         if self.method == "exact":
             for i in range(60):
-                self.symbol_to_id[f"minutes_{i}"] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_id[f"minutes_{i}"] = self.ontology.next_id
+                self.ontology.next_id += 1
             for i in range(24):
-                self.symbol_to_id[f"hours_{i}"] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_id[f"hours_{i}"] = self.ontology.next_id
+                self.ontology.next_id += 1
             for i in range(7):
-                self.symbol_to_id[f"days_{i}"] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_id[f"days_{i}"] = self.ontology.next_id
+                self.nontology.ext_id += 1
             for i in range(52):
-                self.symbol_to_id[f"weeks_{i}"] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_id[f"weeks_{i}"] = self.ontology.next_id
+                self.ontology.next_id += 1
             for i in range(100):
-                self.symbol_to_id[f"years_{i}"] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_id[f"years_{i}"] = self.ontology.next_id
+                self.ontology.next_id += 1
         
         # add approximate time bins if approximate time passage method chosen
         elif self.time_passage == "approximate":
             time_symbols = ["5m-15m", "15m-1h", "1h-2h", "2h-6h", "6h-12h", "12h-1d", "1d-3d", "3d-1w", "1w-2w", "2w-1mt", "1mt-3mt", "3mt-6mt", "=6mt"]
             for tsymb in time_symbols:
-                self.symbol_to_ids[tsymb] = self.next_id
-                self.next_id += 1
+                self.ontology.symbol_to_ids[tsymb] = self.ontology.next_id
+                self.ontology.next_id += 1
+    
+    def tokenize(self, events):
+
+        # compute base tokens
+        temp_tokens = self.base_tokenizer.tokenize()
+
+        # TODO: inject time tokens into code tokens based on chosen method
+        tokens = ...
+
+        return tokens
+
+    def detokenize(self, tokens):
+        
+        # TODO: use injected time tokens to assign times to basic events
+        temp_tokens = ...
+
+        return self.base_tokenizer.detokenize(temp_tokens)
 
 class RolloutTokenizer():
     pass

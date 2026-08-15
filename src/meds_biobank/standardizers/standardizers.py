@@ -2,8 +2,6 @@ import pyspark.sql.functions as F
 from pyspark.sql import Window
 from pyspark.sql import functions as F, Window
 
-# TODO: PROMISE - each measurement id only has one unit
-
 def standardize(msmt, concept_ancestor, concept):
     """
     - For each mtype, filter df and homogenize unit and value
