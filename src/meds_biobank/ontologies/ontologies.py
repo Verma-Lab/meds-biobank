@@ -15,7 +15,6 @@ class Ontology():
         self.code_to_event_type = None
         self.code_to_name = None
         self.code_to_qualifiers = None
-        self.code_to_ancestors = None
         self.code_to_domain_ancestors = None
         self.code_to_unit = None
         self.code_to_bin_ranges = None
@@ -36,25 +35,20 @@ class Ontology():
             - code_to_event_type <Map<code, event_type>>
             - code_to_name <Map<code, name>>
             - code_to_qualifiers <Map<code, wualifier>>
-            - code_to_ancestors <Map<code, List<Tuple<ancestor, distance>>>>
             - code_to_unit <Map<code, unit>>
         """
+
+        # list of structures
+        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"]
+        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit"]
 
         try:
 
             # init maps
-            self.codes = set()
-            self.domain_ancestors = set()
-            self.event_types = set()
-            self.qualifiers = set()
-            self.bins = set()
-            self.units = set()
-            self.code_to_event_type = {}
-            self.code_to_name = {}
-            self.code_to_qualifiers = {}
-            self.code_to_ancestors = {}
-            self.code_to_domain_ancestors = {}
-            self.code_to_unit = {}
+            for struct in sets:
+                setattr(self, struct, set())
+            for struct in maps:
+                setattr(self, struct, {})
 
             # build flat lists
             self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
@@ -73,13 +67,6 @@ class Ontology():
             if qualifiers:
                 code_to_qualifiers_df = qualifiers.groupBy("code").agg(F.collect_set("qualifier").alias("qualifiers"))
                 self.code_to_qualifiers = {row["code"]: list(row["qualifiers"]) for row in code_to_qualifiers_df.collect()}
-            self.code_to_ancestors = {
-                row["code"]: (
-                    [(a["ancestor_concept_id"], a["min_levels_of_separation"]) for a in row["ancestors"]]
-                    if row["ancestors"] is not None else []
-                )
-                for row in concept_schema.collect()
-            }
             code_to_unit_df = events.filter(F.col("event_type") == "measurement").groupBy("code").agg(F.first("unit").alias("unit"))
             self.code_to_unit = {row["code"]:row["unit"] for row in code_to_unit_df.collect()}
 
@@ -88,21 +75,9 @@ class Ontology():
         
         except Exception:
 
-            # de-init maps
-            self.codes = None
-            self.domain_ancestors = None
-            self.event_types = None
-            self.qualifiers = None
-            self.bins = None
-            self.units = None
-            self.code_to_event_type = None
-            self.code_to_name = None
-            self.code_to_qualifiers = None
-            self.code_to_ancestors = None
-            self.code_to_domain_ancestors = None
-            self.code_to_unit = None
-
-            # error
+            # de-init maps and then raise error
+            for struct in sets + maps:
+                setattr(self, struct, None)
             raise
     
     def bin_measurements(self, events):
@@ -239,24 +214,8 @@ class Ontology():
             raise Exception(f"Error: ontologies.load_from_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = [
-            "codes",
-            "domain_ancestors",
-            "event_types",
-            "qualifiers",
-            "bins",
-            "units"
-        ]
-        maps = [
-            "code_to_event_type",
-            "code_to_name",
-            "code_to_qualifiers",
-            "code_to_ancestors",
-            "code_to_domain_ancestors",
-            "code_to_unit",
-            "code_to_bin_ranges",
-            "rollup_map"
-        ]
+        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"]
+        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit", "code_to_bin_ranges", "rollup_map"]
 
         # guard against overwrite false and ontology already read in
         if not overwrite:
@@ -274,29 +233,21 @@ class Ontology():
                 raise Exception(f'Error: ontologies.load_from_disk: File {struct + ".json"} does not exist to read from.')
         
         # if we get here, init maps
-        self.codes = set()
-        self.domain_ancestors = set()
-        self.event_types = set()
-        self.qualifiers = set()
-        self.bins = set()
-        self.units = set()
-        self.code_to_event_type = {}
-        self.code_to_name = {}
-        self.code_to_qualifiers = {}
-        self.code_to_ancestors = {}
-        self.code_to_domain_ancestors = {}
-        self.code_to_unit = {}
-        self.code_to_bin_ranges = {}
-        self.rollup_map = {}
+        for struct in sets:
+            setattr(self, struct, set())
+        for struct in maps:
+            setattr(self, struct, {})
         
         # try to read
         try:
             
+            # read sets
             for struct in sets:
                 path = os.path.join(ontology_data_dir, f"{struct}.json")
                 with open(path, "r") as file:
                     setattr(self, struct, set(json.load(file)))
             
+            # read maps
             for struct in maps:
                 path = os.path.join(ontology_data_dir, f"{struct}.json")
                 with open(path, "r") as file:
@@ -304,21 +255,12 @@ class Ontology():
         
         except Exception:
 
-            # de-init maps
-            self.codes = None
-            self.domain_ancestors = None
-            self.event_types = None
-            self.qualifiers = None
-            self.bins = None
-            self.units = None
-            self.code_to_event_type = None
-            self.code_to_name = None
-            self.code_to_qualifiers = None
-            self.code_to_ancestors = None
-            self.code_to_domain_ancestors = None
-            self.code_to_unit = None
-            self.code_to_bin_ranges = None
-            self.rollup_map = {}
+            # deinit sets and maps then raise error
+            for struct in sets + maps:
+                if struct == "rollup_map":
+                    setattr(self, struct, {})
+                    continue
+                setattr(self, struct, None)
             raise
 
     
@@ -332,23 +274,10 @@ class Ontology():
             raise Exception(f"Error: ontologies.save_to_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = [
-            "codes",
-            "domain_ancestors",
-            "event_types",
-            "qualifiers",
-            "bins",
-            "units"
+        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"
         ]
         maps = [
-            "code_to_event_type",
-            "code_to_name",
-            "code_to_qualifiers",
-            "code_to_ancestors",
-            "code_to_domain_ancestors",
-            "code_to_unit",
-            "code_to_bin_ranges",
-            "rollup_map"
+            "code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit", "code_to_bin_ranges", "rollup_map"
         ]
 
         # guard against one of the ontology fields is None

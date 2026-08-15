@@ -18,7 +18,7 @@ See [docs](./legacy_etl_pipelines.md) for details.
 
 Modern custom OMOP -> MEDS ETL. Minor modifications on OMOP MEDS-ETL 0.3.11.
 
-### Output Schemas
+### Schemas
 
 1. MEDS DataSchema
 
