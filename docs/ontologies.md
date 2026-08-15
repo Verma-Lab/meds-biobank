@@ -22,7 +22,6 @@ units: all units
 code_to_event_type: map code to event type
 code_to_name: map code to name
 code_to_qualifiers: map code to list of qualifiers
-code_to_ancestors: map code to list of OMOP ancestors
 code_to_factors: map code to list of domain ancestors
 code_to_unit: map (measurement event type) code to unit
 code_to_bin_ranges: map (measurement event type) code to map of bin to map of min, max to min, max, respectively 
@@ -43,22 +42,6 @@ rollup_map: map some codes not in codes to codes that are in codes based on roll
 - concept: OMOP concept table
 - concept_ancestor: OMOP concept ancestor table
 - qualifications (optional): map of codes to qualifiers
-
-## Ontology Fields
-
-- codes: list of all concept codes
-- etypes: list of all used OMOP table types (event_types)
-- mtypes: list of all measurement types used for decile binning
-- deciles: list of all decile bins used (d0, d1, ...)
-- special codes: dict mapping special concept name to id
-- code_to_etype: maps code to event type
-- code_to_mtype: maps code to measurement type
-- code_to_name: maps code to name
-- code_to_qualifiers: maps code to qualifiers
-- code_to_parents: maps code to immediate ancestor codes
-- mtype_to_decile_ranges: maps measurement type and decile bin d0-10 to min/max
-- mtype_to_unit: maps measurement type to unit
-- rollup_map: maps unregistered codes to registered parent codes where possible
 
 ## Example
 
