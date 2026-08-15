@@ -1,3 +1,5 @@
+![](./docs/meds_biobank_logo.png)
+
 # meds-biobank
 
 > Unofficial, lightweight Python re-implementation of parts of the **MEDS** software ecosystem, built to operate on in-memory tables loaded via PySpark rather than directly on disk. Designed for small-to-medium biobanks queried through cloud services in interactive Python notebooks.

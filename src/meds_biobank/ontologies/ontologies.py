@@ -262,6 +262,9 @@ class Ontology():
                     continue
                 setattr(self, struct, None)
             raise
+    
+    # TEST: measurements were not roled up
+    # TEST: every target of rollup map is in self.codes
 
     
     def save_to_disk(self, ontology_data_dir, overwrite=True):
