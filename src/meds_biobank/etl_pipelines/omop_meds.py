@@ -368,7 +368,7 @@ def create_concept_schema(events, concept, concept_ancestor):
     Returns:
         concept_schema (pyspark.sql.DataFrame):
             Desc: metadata schema for all concepts that can (do!) occur in the data
-            Schema: |code|name|ancestors|domain_ancestors|
+            Schema: |code|name|ancestors|factors|
             ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
     """
 
@@ -435,7 +435,7 @@ def create_concept_schema(events, concept, concept_ancestor):
             ).alias("sorted_pairs")
         )
         .withColumn(
-            "domain_ancestors",
+            "factors",
             F.transform("sorted_pairs", lambda x: x["ancestor_concept_id"])
         )
         .drop("sorted_pairs")
@@ -464,7 +464,7 @@ def create_concept_schema(events, concept, concept_ancestor):
             ["code", "name"]
         )
         .withColumn("ancestors", F.lit(None).cast(cn.schema["ancestors"].dataType))
-        .withColumn("domain_ancestors", F.lit(None).cast(cn.schema["domain_ancestors"].dataType))
+        .withColumn("factors", F.lit(None).cast(cn.schema["factors"].dataType))
         .join(cn.select("code"), on="code", how="left_anti")
     )
     cn = cn.unionByName(special_df)

@@ -7,7 +7,7 @@ class Ontology():
 
     def __init__(self):
         self.codes = None
-        self.domain_ancestors = None
+        self.factors = None
         self.event_types = None
         self.qualifiers = None
         self.bins = None
@@ -15,7 +15,7 @@ class Ontology():
         self.code_to_event_type = None
         self.code_to_name = None
         self.code_to_qualifiers = None
-        self.code_to_domain_ancestors = None
+        self.code_to_factors = None
         self.code_to_unit = None
         self.code_to_bin_ranges = None
         self.rollup_map = {}
@@ -39,8 +39,8 @@ class Ontology():
         """
 
         # list of structures
-        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"]
-        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit"]
+        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"]
+        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit"]
 
         try:
 
@@ -53,7 +53,7 @@ class Ontology():
             # build flat lists
             self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
             for row in concept_schema.collect():
-                self.domain_ancestors.update(set(row["domain_ancestors"]))
+                self.factors.update(set(row["factors"]))
             self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
             if qualifiers is not None:
                 self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
@@ -70,8 +70,8 @@ class Ontology():
             code_to_unit_df = events.filter(F.col("event_type") == "measurement").groupBy("code").agg(F.first("unit").alias("unit"))
             self.code_to_unit = {row["code"]:row["unit"] for row in code_to_unit_df.collect()}
 
-            # build code_to_domain_ancestors
-            self.code_to_domain_ancestors = {row["code"]: list(row["domain_ancestors"]) for row in concept_schema.select("code", "domain_ancestors").collect()}
+            # build code_to_factors
+            self.code_to_factors = {row["code"]: list(row["factors"]) for row in concept_schema.select("code", "factors").collect()}
         
         except Exception:
 
@@ -214,8 +214,8 @@ class Ontology():
             raise Exception(f"Error: ontologies.load_from_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"]
-        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit", "code_to_bin_ranges", "rollup_map"]
+        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"]
+        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit", "code_to_bin_ranges", "rollup_map"]
 
         # guard against overwrite false and ontology already read in
         if not overwrite:
@@ -274,10 +274,10 @@ class Ontology():
             raise Exception(f"Error: ontologies.save_to_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = ["codes", "domain_ancestors", "event_types", "qualifiers", "bins", "units"
+        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"
         ]
         maps = [
-            "code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_domain_ancestors", "code_to_unit", "code_to_bin_ranges", "rollup_map"
+            "code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit", "code_to_bin_ranges", "rollup_map"
         ]
 
         # guard against one of the ontology fields is None

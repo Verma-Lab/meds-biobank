@@ -9,11 +9,11 @@ class Tokenizer():
         ontology,
         return_qualifiers=False,
         return_event_types=False,
-        return_domain_ancestors=False,
+        return_factors=False,
         rollout=False,
         return_times=False,
         time_method=None,
-        domain_ancestor_event_types=[]
+        factor_event_types=[]
     ):
         """
         Args:
@@ -23,15 +23,15 @@ class Tokenizer():
                 Desc: whether to return qualifier concepts
             return_event_types (bool):
                 Desc: whether to return event types
-            return_domain_ancestors (bool):
+            return_factors (bool):
                 Desc: whether to return domain ancestors
             rollout (bool):
-                Desc: whether to rollout tokenize using quals, event types, and domain_ancestors
+                Desc: whether to rollout tokenize using quals, event types, and factors
             return_times (bool):
                 Desc: whether to return times
             time_method (string): exact, approximate
                 Desc: if set, method to use for tokenizing times, otherwise simply return times
-            domain_ancestor_event_types (List<string>):
+            factor_event_types (List<string>):
                 Desc: list of event types for which to return domain ancestors
         """
 
@@ -43,24 +43,27 @@ class Tokenizer():
         if time_method is not None and return_times is False:
             raise Exception("Error: tokenizer.__init__(): time_method is set even though return_times is False.")
         
-        # ensure domain_ancestor_event_types is not set while retrun_domain_ancestors is False
-        if len(domain_ancestor_event_types) != 0 and not return_domain_ancestors:
-            raise Exception("Error: tokenizer.__init__(): domain_ancestor_event_types selected but return_domain_ancestors is False.")
+        # ensure factor_event_types is not set while retrun_factors is False
+        if len(factor_event_types) != 0 and not return_factors:
+            raise Exception("Error: tokenizer.__init__(): factor_event_types selected but return_factors is False.")
         
         # other case
-        if len(domain_ancestor_event_types) == 0 and return_domain_ancestors:
-            raise Exception("Error: tokenizer.__init__(): domain_ancestor_eventy_types not set but return_domain_ancestors is True.")
+        if len(factor_event_types) == 0 and return_factors:
+            raise Exception("Error: tokenizer.__init__(): factor_eventy_types not set but return_factors is True.")
         
         # another
-        if rollout but not (return_qualifiers or return_event_types or return_domain_ancestors):
+        if rollout but not (return_qualifiers or return_event_types or return_factors):
             raise Exception("Error: tokenizer.__init__(): rollout True but nothing to rollout.")
 
         # set instance variables
         self.ontology = ontology
         self.return_qualifiers = return_qualifiers
         self.return_event_types = return_event_types
+        self.return_factors = return_factors
+        self.roolout = rollout
         self.return_times = return_times
         self.time_method = time_method
+        self.factor_event_types = domain_acnestor_event_types
 
         # tracking var
         self.last_assigned_id = -1

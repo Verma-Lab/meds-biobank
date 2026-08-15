@@ -47,10 +47,10 @@ visit_id (string): id of the visit (OMOP visit_occurrence_id) if this makes sens
 
 ```bash
 # required fields
-|code|ancestors|domain_ancestors|name|
+|code|ancestors|factors|name|
 code (long): OMOP concept id
 ancestors (list<tuple<long, int>>): tuples OMOP concept id of ancestor, ontological distance
-domain_ancestors (list<long>): OMOP concept ids of ancestors in the same domain as the code, in order of distance from code (ascending) [this is a "decomposition" of the code]
+factors (list<long>): OMOP concept ids of ancestors in the same domain as the code, in order of distance from code (ascending) [this is a "decomposition" of the code]
 name (string): concept name
 ```
 

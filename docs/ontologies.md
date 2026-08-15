@@ -11,7 +11,7 @@ Computes decile mapping by binning measurement concepts. Performs ancestry rollu
 
 ```bash
 codes: all codes in concept_schema
-domain_ancestors: all codes that serve as domain ancestors
+factors: all codes that serve as domain ancestors
 event_types: all event types
 qualifiers: all qualifiers
 bins: all bins
@@ -22,7 +22,7 @@ code_to_event_type: map code to event type
 code_to_name: map code to name
 code_to_qualifiers: map code to list of qualifiers
 code_to_ancestors: map code to list of OMOP ancestors
-code_to_domain_ancestors: map code to list of domain ancestors
+code_to_factors: map code to list of domain ancestors
 code_to_unit: map (measurement event type) code to unit
 code_to_bin_ranges: map (measurement event type) code to map of bin to map of min, max to min, max, respectively 
 rollup_map: map some codes not in codes to codes that are in codes based on rollup
