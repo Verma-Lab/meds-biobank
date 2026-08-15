@@ -10,6 +10,7 @@ Computes decile mapping by binning measurement concepts. Performs ancestry rollu
 1. Ontology Fields
 
 ```bash
+# set fields
 codes: all codes in concept_schema
 factors: all codes that serve as domain ancestors
 event_types: all event types
