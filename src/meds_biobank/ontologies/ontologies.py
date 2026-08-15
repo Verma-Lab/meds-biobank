@@ -57,7 +57,7 @@ class Ontology():
             self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
             if qualifiers is not None:
                 self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
-            self.bins = {f"bin-{i}" for i in range(11)}
+            self.bins = {f"bin_{i}" for i in range(11)}
             self.units = {row["unit"] for row in events.filter(F.col("event_type") == "measurement").select("unit").distinct().collect()}
 
             # build maps
