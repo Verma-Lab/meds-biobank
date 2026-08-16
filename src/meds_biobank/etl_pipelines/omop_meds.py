@@ -5,7 +5,6 @@ from meds_biobank.standardizers.standardizers import standardize
 
 PMBB_BIRTH = concepts.PMBB_BIRTH
 PMBB_DEATH = concepts.PMBB_DEATH
-PMBB_INPATIENT = concepts.PMBB_INPATIENT
 VISIT_FLAGS = concepts.VISIT_FLAGS
 SPECIAL_CONCEPTS = concepts.SPECIAL_CONCEPTS
 
