@@ -139,5 +139,5 @@ def meds_data_path(spark):
     return Path(__file__).resolve().parent.parent / os.environ["MEDS_DATA_DIR"] / "meds.csv"
 
 @pytest.fixture(scope="session")
-def meds_events(spark, pmbb_meds_data_path):
-    return spark.read.csv(str(pmbb_meds_data_path), header=True, inferSchema=True)
+def meds_events(spark, meds_data_path):
+    return spark.read.csv(str(meds_data_path), header=True, inferSchema=True)

@@ -2,7 +2,7 @@ import pyspark.sql.functions as F
 from pyspark.sql import Window
 from pyspark.sql import functions as F, Window
 
-def standardize(msmt, concept_ancestor, concept):
+def standardize(msmt, concept, concept_ancestor):
     """
     - For each mtype, filter df and homogenize unit and value
 
@@ -63,7 +63,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike('^.*i?u.*/l$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
@@ -79,14 +79,14 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike('^gm?/dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double")/1000, 3)
+                F.round(F.col("value_source_value").try_cast("double")/1000, 3)
             )
             .when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double")/10000, 3)
+                F.round(F.col("value_source_value").try_cast("double")/10000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("g/dL"))
@@ -102,7 +102,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike('^.*i?u.*/l$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
@@ -118,7 +118,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like('mmo%/l'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
@@ -134,16 +134,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -159,13 +159,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -181,7 +181,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^.*i?u.*/l$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
@@ -201,10 +201,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -220,13 +220,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^gm?/dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("g/dL"))
@@ -242,16 +242,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -267,16 +267,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -293,16 +293,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -318,10 +318,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 10, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/L"))
@@ -337,16 +337,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -362,7 +362,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("mmo%/l"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
@@ -378,16 +378,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -403,16 +403,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -429,16 +429,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -454,16 +454,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -479,16 +479,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -514,13 +514,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -536,16 +536,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -561,16 +561,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -600,10 +600,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -623,7 +623,7 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("m%/mm3")
                 | F.lower(F.col("unit_source_value")).rlike(r'^m.*/cu?mm$')
                 | F.lower(F.col("unit_source_value")).like("%10%6/ul"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Million/uL"))
@@ -654,7 +654,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("mm/h%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mm/h"))
@@ -672,7 +672,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^.*i?u.*/l$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Unit/L"))
@@ -688,13 +688,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -710,13 +710,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -735,16 +735,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -761,16 +761,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -786,16 +786,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -821,13 +821,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^gm?/dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("g/dL"))
@@ -843,7 +843,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.col("unit_source_value").rlike(r'^%.*$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("%"))
@@ -859,16 +859,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -884,16 +884,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -909,16 +909,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -932,7 +932,7 @@ def standardize(msmt, concept_ancestor, concept):
         .filter(F.lower(F.col("concept_name")).rlike(r'.*\binr\b.*'))
         .dropDuplicates(["measurement_id"])
         .withColumn("std_concept_id", F.lit(85610)) # TODO: review semi-arbitrary choice of CPT4 code
-        .withColumn("value_converted", F.round(F.try_cast(F.col("value_source_value"), "double"), 3))
+        .withColumn("value_converted", F.round(F.col("value_source_value").try_cast("double"), 3))
         .withColumn("unit_converted", F.lit("ratio"))
     )
     all_frames.append(labs_inr)
@@ -946,7 +946,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 (F.lower(F.col("unit_source_value")) == "ug/dl") | (F.lower(F.col("unit_source_value")) == "mcg/dl"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ug/dL"))
@@ -963,16 +963,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -988,7 +988,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "leu/ul",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Leu/uL"))
@@ -1008,10 +1008,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1036,16 +1036,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1065,10 +1065,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1092,16 +1092,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1121,10 +1121,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "cells/ul",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^10.3/ul$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Cells/uL"))
@@ -1140,7 +1140,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "nmol/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
@@ -1156,10 +1156,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 (F.lower(F.col("unit_source_value")) == "mcg/ml") | (F.lower(F.col("unit_source_value")) == "ug/ml"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mcg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mcg/mL"))
@@ -1175,7 +1175,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("mcg/mg%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mcg/mg"))
@@ -1195,10 +1195,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1218,10 +1218,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1245,10 +1245,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1272,10 +1272,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1291,7 +1291,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "nmol/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
@@ -1312,7 +1312,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("s%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Second(s)"))
@@ -1328,16 +1328,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1357,10 +1357,10 @@ def standardize(msmt, concept_ancestor, concept):
                 | F.lower(F.col("unit_source_value")).like("%10%3/ul")
                 | F.lower(F.col("unit_source_value")).like("%10%3/mcl")
                 | F.lower(F.col("unit_source_value")).rlike(r'^k/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^cell.*/[ucm].+$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Thousand/uL"))
@@ -1376,7 +1376,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("mmo%/l"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
@@ -1392,16 +1392,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1421,10 +1421,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "cells/ul",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).rlike(r'^10.3/ul$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Cells/uL"))
@@ -1440,13 +1440,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^gm?/dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("g/dL"))
@@ -1466,16 +1466,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1492,7 +1492,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("s%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Second(s)"))
@@ -1512,7 +1512,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "iu/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("International Units/mL"))
@@ -1528,7 +1528,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "nmol/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("nmol/L"))
@@ -1544,7 +1544,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("mmo%/l"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmol/L"))
@@ -1560,10 +1560,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "pg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 10, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("pg/mL"))
@@ -1581,7 +1581,7 @@ def standardize(msmt, concept_ancestor, concept):
                 F.lower(F.col("unit_source_value")).rlike(r'^u.?iu.?/ml$')
                 | F.lower(F.col("unit_source_value")).rlike(r'^mc?i?u.*/l$')
                 | (F.lower(F.col("unit_source_value")) == "mciu/ml"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("uIU/mL"))
@@ -1597,16 +1597,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1622,16 +1622,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1647,13 +1647,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -1669,13 +1669,13 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "ng/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/dl",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ng/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 1000, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 1000, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("ng/mL"))
@@ -1691,16 +1691,16 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).rlike(r'^mg/\s?dl$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "g/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 100, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/l",
-                F.round(F.try_cast(F.col("value_source_value"), "double") / 10, 3)
+                F.round(F.col("value_source_value").try_cast("double") / 10, 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "mg/ml",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 100, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 100, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mg/dL"))
@@ -1717,7 +1717,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "mmhg",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmHg"))
@@ -1734,7 +1734,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "mmhg",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("mmHg"))
@@ -1751,7 +1751,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "kg/m^2",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("kg/m^2"))
@@ -1767,10 +1767,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("in%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")) == "ft",
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 12, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 12, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Inches"))
@@ -1786,7 +1786,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.col("unit_source_value").rlike(r'^%.*$'),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("%"))
@@ -1802,7 +1802,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "counts/min",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Counts/Min"))
@@ -1818,7 +1818,7 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "counts/min",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Counts/Min"))
@@ -1834,10 +1834,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")) == "f",
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).like("%c%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double") * (9 / 5) + 32, 3)
+                F.round(F.col("value_source_value").try_cast("double") * (9 / 5) + 32, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("Degrees Fahrenheit"))
@@ -1853,10 +1853,10 @@ def standardize(msmt, concept_ancestor, concept):
             "value_converted",
             F.when(
                 F.lower(F.col("unit_source_value")).like("o%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double"), 3)
+                F.round(F.col("value_source_value").try_cast("double"), 3)
             ).when(
                 F.lower(F.col("unit_source_value")).like("lb%"),
-                F.round(F.try_cast(F.col("value_source_value"), "double") * 16, 3)
+                F.round(F.col("value_source_value").try_cast("double") * 16, 3)
             ).otherwise(F.lit(None))
         )
         .withColumn("unit_converted", F.lit("oz"))
@@ -2015,7 +2015,7 @@ def autostd(msmt):
     already_target = F.col("unit_norm") == F.col("target_unit")
     convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull()
     success = already_target | convertible
-    value_num = F.try_cast(F.col("value_source_value"), "double")
+    value_num = F.col("value_source_value").try_cast("double")
     df = df.withColumn(
         "value_std",
         F.when(already_target, F.round(value_num, 3))
@@ -2035,4 +2035,5 @@ def autostd(msmt):
     return df.drop("pair_count", "unit_rank", "factor_from", "factor_to")
 
 # TODO: TEST each measurement type has at most one unit
+
 # TODO: TEST each measurement id is still present
