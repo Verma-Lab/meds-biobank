@@ -111,8 +111,6 @@ class BaseTokenizer():
             tokens["event_types"] = [None]
         if self.factors:
             tokens["factors"] = [None]
-        if self.event_types:
-            tokens["event_types"] = [None]
         
         # init tracking var
         last_visit_id = -1
@@ -191,7 +189,7 @@ class BaseTokenizer():
                 tokens["times"].append(None)
 
             # handle factors if requested
-            if self.factors:
+            if self.factors and event["event_type"] is in self.factor_types:
                 factor_codes = self.ontology.code_to_factors[code]
                 factor_tokens = []
                 for fc in factor_codes:
@@ -306,11 +304,17 @@ class BaseTokenizer():
 class TimeTokenizer():
     def __init__(base_tokenizer, method="approximate"):
 
-        # TODO: guard against type errors
+        # guard against type errors
+        if not isinstance(base_tokenizer, BaseTokenizer):
+            raise ValueError("TimeTokenizer.__init__(): base_tokenizer is not of class BaseTokenizer.")
 
-        # TODO: guard against invalid method arguments
+        # guard against invalid method arguments
+        if method is not in {"approximate", "exact"}:
+            raise ValueError(f"TimeTokenizer.__init__(): method is supposed to be either \"approximate\" or \"exact\" but detected {method}.")
 
-        # TODO: ensure that base tokenizer has already set vocab
+        # ensure that base tokenizer has already set vocab
+        if None in (base_tokenizer.symbols, base_tokenizer.symbol_to_id, base_tokenizer.id_to_symbol):
+            raise Exception("TimeTokenizer.__init__(): base_tokenizer does not have its symbol vocabulary built fully (or at all).")
 
         # init fields
         self.base_tokenizer = base_tokenizer
@@ -359,6 +363,10 @@ class TimeTokenizer():
         temp_tokens = ...
 
         return self.base_tokenizer.detokenize(temp_tokens)
+    
+    def tokenize_time_diff(time_diff, method="exact"):
+
+        # TODO: tokenize time difference given method (e.g. 1 hr 1 min, exact -> {1 hr}{1 min})
 
 class RolloutTokenizer():
     pass
