@@ -343,7 +343,7 @@ class BaseTokenizer():
             i += 1
 
 class TimeTokenizer():
-    def __init__(base_tokenizer, method="approximate"):
+    def __init__(self, base_tokenizer, method="approximate"):
 
         # guard against type errors
         if not isinstance(base_tokenizer, BaseTokenizer):
@@ -360,9 +360,12 @@ class TimeTokenizer():
         # init fields
         self.base_tokenizer = base_tokenizer
         self.method = method
-        self.time_symbols = set()
+        self.time_symbols = None
 
     def augment_vocab(self):
+
+        # init time symbols
+        self.time_symbols = set()
 
         # add exact time bins if exact time passage method chosen
         if self.method == "exact":
@@ -594,7 +597,7 @@ class TimeTokenizer():
 
         return self.base_tokenizer.detokenize(temp_tokens)
     
-    def tokenize_time_diff(time_diff, floor="minutes_5", cieling="years_10"):
+    def tokenize_time_diff(self, time_diff, floor="minutes_5", cieling="years_10"):
         """
         Args:
             time_diff (timedelta): ...
@@ -671,7 +674,7 @@ class TimeTokenizer():
         else:
             raise ValueError(f"TimeTokenizer.tokenize_time_diff(): invalid time passage method {self.method} recieved. How did we get here? This should have been caught by __init__().")
     
-    def detokenize_time_diff(time_tokens):
+    def detokenize_time_diff(self, time_tokens):
         """
         Args:
             tokens (List<int>): ...
@@ -716,7 +719,7 @@ class TimeTokenizer():
         else:
             raise ValueError()
     
-    def code_to_tdelt(code):
+    def code_to_tdelt(self, code):
         """
         Args:
             code (string):
@@ -748,7 +751,47 @@ class TimeTokenizer():
             raise ValueError()
 
 class RolloutTokenizer():
-    pass
+    def __init__(self, tokenizer, qualfiers=False, event_types=False, factors=True):
+        
+        # make sure fields have proper types and settings
+        if not isinstance(tokenizer, BaseTokenizer) and not isinstance(tokenizer, TimeTokenizer):
+            raise ValueError()
+        if not (qualifiers or event_types or factors):
+            raise ValueError()
+        
+        # make sure base tokenizer is properly initialized
+        if isinstance(tokenizer, TimeTokenizer):
+            if tokenizer.time_symbols is None:
+                raise ValueError()
+            if None in (tokenizer.base_tokenizer.symbols, tokenizer.base_tokenizer.symbol_to_id, tokenizer.base_tokenizer.id_to_symbol):
+                raise ValueError()
+        if isinstance(tokenizer, BaseTokenizer):
+            if None in (tokenizer.symbols, tokenizer.symbol_to_id, tokenizer.id_to_symbol):
+                raise ValueError()
+        
+        # init fields
+        self.base_tokenizer = base_tokenizer
+        self.is_time_tokenizer = (isinstance(tokenizer, TimeTokenizer))
+        self.qualifiers = qualifiers
+        self.event_types = event_types
+        self.factors = factors
+    
+    def tokenize(events):
+        
+        # compute base tokens
+        base_tokens = self.base_tokenizer.tokenize(events)
+
+        # TODO: rollout requested fields
+        unrolled_tokens = ...
+
+        return unrolled_tokens
+    
+    def detokenize(tokens):
+
+        # TODO: roll requested fields
+        rolled_tokens = ...
+        
+        return self.base_tokenizer.detokenize(rolled_tokens)
 
 class Textualizer():
     pass
