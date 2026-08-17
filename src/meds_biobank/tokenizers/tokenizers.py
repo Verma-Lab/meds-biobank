@@ -1,5 +1,6 @@
 from meds_biobank.ontologies.ontologies import Ontology
 import math
+from datetime import datetime, timezone
 
 SPECIAL_TOKENS = ["BOS", "BOV"]
 
@@ -95,9 +96,29 @@ class BaseTokenizer():
     def tokenize(self, events):
         """
         Args:
-            events (List<Dict>): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id| (single patient)
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
         Returns:
-            ...
+            tokens (Dict):
+                Description:
+                    dict of token lists for codes and annotations
+                Schema:
+                    codes (List<int>): ...
+                    times (List<datetime>): ...
+                    qualifiers (List<int>): ...
+                    event_types (List<int>): ...
+                    factors (List<int>): ...
         """
 
         # init token list, add BOS
@@ -222,9 +243,29 @@ class BaseTokenizer():
     def detokenize(self, tokens):
         """
         Args:
-            tokens (Dict<List<int>>)
+            tokens (Dict):
+                Description:
+                    dict of token lists for codes and annotations
+                Schema:
+                    codes (List<int>): ...
+                    times (List<datetime>): ...
+                    qualifiers (List<int>): ...
+                    event_types (List<int>): ...
+                    factors (List<int>): ...
         Returns:
-            events (List<Dict>): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id| (single patient)
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
         """
 
         # init events
@@ -319,54 +360,252 @@ class TimeTokenizer():
         # init fields
         self.base_tokenizer = base_tokenizer
         self.method = method
+        self.time_symbols = None
 
     def augment_vocab(self):
+
+        # create time symbols
+        self.time_symbols = set()
 
         # add exact time bins if exact time passage method chosen
         if self.method == "exact":
             for i in range(60):
-                self.ontology.symbol_to_id[f"minutes_{i}"] = self.ontology.next_id
-                self.ontology.next_id += 1
+                symb = f"minutes_{i}"
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.next_id += 1
             for i in range(24):
-                self.ontology.symbol_to_id[f"hours_{i}"] = self.ontology.next_id
-                self.ontology.next_id += 1
+                symb = f"hours_{i}"
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.next_id += 1
             for i in range(7):
-                self.ontology.symbol_to_id[f"days_{i}"] = self.ontology.next_id
-                self.nontology.ext_id += 1
+                symb = f"days_{i}"
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.next_id += 1
             for i in range(52):
-                self.ontology.symbol_to_id[f"weeks_{i}"] = self.ontology.next_id
-                self.ontology.next_id += 1
+                symb = f"weeks_{i}"
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.next_id += 1
             for i in range(100):
-                self.ontology.symbol_to_id[f"years_{i}"] = self.ontology.next_id
-                self.ontology.next_id += 1
+                symb = f"years_{i}"
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.next_id += 1
         
         # add approximate time bins if approximate time passage method chosen
         elif self.time_passage == "approximate":
-            time_symbols = ["5m-15m", "15m-1h", "1h-2h", "2h-6h", "6h-12h", "12h-1d", "1d-3d", "3d-1w", "1w-2w", "2w-1mt", "1mt-3mt", "3mt-6mt", "=6mt"]
-            for tsymb in time_symbols:
-                self.ontology.symbol_to_ids[tsymb] = self.ontology.next_id
-                self.ontology.next_id += 1
+            time_symbols = ["minutes_5-minutes_15", "minutes_15-hours_1", "hours_1-hours_2", "hours_2-hours_6", "hours_6-hours_12", "hours_12-days_1", "days_1-days_3", "days_3-weeks_1", "weeks_1-weeks_2", "weeks_2-months_1", "months_1-monnths_3", "months_3-months_6", "months_6"]
+            for symb in time_symbols:
+                self.time_symbols.add(symb)
+                self.base_tokenizer.symbol_to_ids[symb] = self.ontology.next_id
+                self.base_tokenizer.next_id += 1
     
     def tokenize(self, events):
+        """
+        Args:
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
+        Returns:
+            tokens (Dict):
+                Description:
+                    dict of token lists for codes and annotations
+                Schema:
+                    codes (List<int>): ...
+                    qualifiers (List<int>): ...
+                    event_types (List<int>): ...
+                    factors (List<int>): ...
+        """
 
         # compute base tokens
         temp_tokens = self.base_tokenizer.tokenize()
 
-        # TODO: inject time tokens into code tokens based on chosen method
-        tokens = ...
+        # inject time tokens into code tokens based on chosen method
+        tokens = {
+            "codes": []
+        }
+        if self.qualifiers:
+            tokens["qualifiers"] = []
+        if self.event_types:
+            tokens["event_types"] = []
+        if self.factors:
+            tokens["factors"] = []
+        
+        # hold last time
+        last_time = None
+        
+        # iterate through original token structure
+        for i in range(len(temp_tokens["codes"])):
+
+            # skip time tokenization if first iteration
+            if last_time is not None:
+
+                # compute time passage since last code
+                time_passage = temp_tokens["times"][i] - last_time
+
+                # compute time tokens
+                time_tokens = self.tokenize_time_diff(time_diff)
+
+                # if there are any time tokens, insert into codes and rollout metadata
+                if len(time_tokens) > 0:
+                    for i, tok in enumerate(time_tokens):
+                        tokens["codes"].append(tok)
+                        if self.qualifiers:
+                            tokens["qualifiers"].append(None)
+                        if self.event_types:
+                            tokens["event_types"].append(None)
+                        if self.factors:
+                            tokens["factors"].append(None)
+            last_time = temp_tokens["times"][i]
+
+            # copy code, metadata
+            tokens["codes"].append(temp_tokens["codes"][i])
+            if self.qualifiers:
+                tokens["qualifiers"].append(temp_tokens["qualifiers"][i])
+            if self.event_types:
+                tokens["event_types"].append(temp_tokens["event_types"][i])
+            if self.factors:
+                tokens["factors"].append(temp_tokens["factors"][i])
 
         return tokens
 
     def detokenize(self, tokens):
+        """
+        Args:
+            tokens (Dict):
+                Description:
+                    dict of token lists for codes and annotations
+                Schema:
+                    codes (List<int>): ...
+                    qualifiers (List<int>): ...
+                    event_types (List<int>): ...
+                    factors (List<int>): ...
+        Returns:
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
+        """
         
-        # TODO: use injected time tokens to assign times to basic events
-        temp_tokens = ...
+        # use injected time tokens to assign times to basic events
+        start_time = datetime.fromtimestamp(0, tz=timezone.utc) # 1970-01-01 00:00:00+00:00
+        temp_tokens = {
+            "codes": [],
+            "times": [],
+        }
+        if self.qualifiers:
+            temp_tokens["qualifiers"] = []
+        if self.event_types:
+            temp_tokens["event_types"] = []
+        if self.factors:
+            temp_tokens["factors"] = []
+        
+        # init var to store growing time token list
+        temp_time_tokens = []
+
+        # iterate through codes
+        for i in range(len(tokens["codes"])):
+
+            # grab code token and code
+            code_token = tokens["codes"][i]
+            code = self.base_tokenizer.id_to_symbol[code_token]
+
+            # handle BOS
+            if (code == "BOS"):
+                temp_tokens["codes"].append(code_token)
+                temp_tokens["times"].append(None)
+                if self.qualifiers:
+                    temp_tokens["qualifiers"].append(None)
+                if self.event_types:
+                    temp_tokens["event_types"].append(None)
+                if self.factors:
+                    temp_tokens["factors"].append(None)
+            
+            # handle time symbol
+            elif code in self.time_symbols:
+                temp_time_tokens.append(code_token)
+            
+            # handle regular code
+            else:
+
+                # save code
+                temp_tokens["codes"].append(code_token)
+
+                # compute previous time
+                previous_time = (None or start_time)
+
+                # if we have built up time tokens to detokenize, detokenize and add time to last available to get current time
+                if len(temp_time_symbols) > 0:
+
+                    # compute time passage
+                    time_delta = self.detokenize_time_diff(temp_time_tokens)
+
+                    # then reset temp time tokens
+                    temp_time_tokens = []
+
+                    # get current time
+                    current_time = previous_time + time_delta
+                
+                # otherwise, propagate previous time
+                else:
+                    current_time = previous_time
+                
+                # set time of token
+                temp_tokens["times"].append(current_time)
+
+                # save metadata
+                if self.qualifiers:
+                    temp_tokens["qualifiers"].append(tokens["qualifiers"][i])
+                if self.event_types:
+                    temp_tokens["event_types"].append(tokens["event_types"][i])
+                if self.factors:
+                    temp_tokens["factors"].append(tokens["factors"][i])
 
         return self.base_tokenizer.detokenize(temp_tokens)
     
-    def tokenize_time_diff(time_diff, method="exact"):
+    def tokenize_time_diff(time_diff, floor="minutes_5", cieling="years_10"):
+        """
+        Args:
+            time_diff (datetime): ...
+        Returns:
+            tokens (List<int>): ...
+        """
 
         # TODO: tokenize time difference given method (e.g. 1 hr 1 min, exact -> {1 hr}{1 min})
+
+        # TODO: return empty list if the time difference is too short to tokenize
+    
+    def detokenize_time_diff(time_tokens):
+        """
+        Args:
+            tokens (List<int>): ...
+        Returns:
+            time_diff (datetime): ...
+        """
+        
+        # TODO: use tokens to determine time difference and return datetime
 
 class RolloutTokenizer():
     pass
