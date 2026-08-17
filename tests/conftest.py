@@ -13,6 +13,7 @@ def spark():
         .master("local[2]")
         .appName("meds-biobank-tests")
         .config("spark.sql.shuffle.partitions", "2")
+        .config("spark.driver.memory", "4g")
         .getOrCreate()
     )
 

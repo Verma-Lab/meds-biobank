@@ -472,8 +472,7 @@ def create_concept_schema(events, concept, concept_ancestor):
 
     )
 
-    # drop special concepts that already have a real row in cn (e.g. birth/death
-    # concept ids that also occur as genuine OMOP vocabulary concepts)
+    # drop special concepts that already have a real row in cn (e.g. birth/death concept ids that also occur as genuine OMOP vocabulary concepts)
     special_df = special_df.join(cn.select("code"), on="code", how="left_anti")
 
     cn = cn.unionByName(special_df)

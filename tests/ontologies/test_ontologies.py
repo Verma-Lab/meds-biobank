@@ -76,4 +76,4 @@ def test_ontologies(spark, meds_events, meds_concept_schema):
     ontology = Ontology()
     ontology.compute_concept_ontology(meds_events, meds_concept_schema)
     ontology.bin_measurements(meds_events)
-    ontology.rollup_concepts(meds_events, concept_schema, threshold=0.05)
+    ontology.rollup_concepts(meds_events, meds_concept_schema, threshold=0.05)

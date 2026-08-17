@@ -53,7 +53,8 @@ class Ontology():
             # build flat lists
             self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
             for row in concept_schema.collect():
-                self.factors.update(set(row["factors"]))
+                if row["factors"] is not None:
+                    self.factors.update(set(row["factors"]))
             self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
             if qualifiers is not None:
                 self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
@@ -71,7 +72,7 @@ class Ontology():
             self.code_to_unit = {row["code"]:row["unit"] for row in code_to_unit_df.collect()}
 
             # build code_to_factors
-            self.code_to_factors = {row["code"]: list(row["factors"]) for row in concept_schema.select("code", "factors").collect()}
+            self.code_to_factors = {row["code"]: list((row["factors"] or [])) for row in concept_schema.select("code", "factors").collect()}
         
         except Exception:
 
@@ -176,16 +177,12 @@ class Ontology():
             ) # code, ancestor, distance
 
             # build df of code, code_prop, ancestor, ancestor_prop, distance via joining code proportions
-            cs_exp = cs_exp.join(
-                cf,
-                cs_exp.code == cf.code,
-                "inner"
-            ).drop(cf.code).withColumnRenamed("prop", "code_prop")
-            cs_exp = cs_exp.join(
-                cf,
-                cs_exp.ancestor == cf.code,
-                "inner"
-            ).drop(cf.code).withColumnRenamed("prop", "ancestor_prop")
+            # (project cf into two distinctly-named frames first, rather than joining
+            # the same cf object into cs_exp twice, to avoid an ambiguous self-join)
+            code_freq = cf.select(F.col("code"), F.col("prop").alias("code_prop"))
+            ancestor_freq = cf.select(F.col("code").alias("ancestor"), F.col("prop").alias("ancestor_prop"))
+            cs_exp = cs_exp.join(code_freq, on="code", how="inner")
+            cs_exp = cs_exp.join(ancestor_freq, on="ancestor", how="inner")
 
             # filter for rows where code is below thresh and ancestor is above
             cs_exp = cs_exp.filter(
