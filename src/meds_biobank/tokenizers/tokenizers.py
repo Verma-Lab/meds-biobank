@@ -1,6 +1,6 @@
 from meds_biobank.ontologies.ontologies import Ontology
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 SPECIAL_TOKENS = ["BOS", "BOV"]
 
@@ -360,39 +360,46 @@ class TimeTokenizer():
         # init fields
         self.base_tokenizer = base_tokenizer
         self.method = method
-        self.time_symbols = None
+        self.time_symbols = set()
 
     def augment_vocab(self):
-
-        # create time symbols
-        self.time_symbols = set()
 
         # add exact time bins if exact time passage method chosen
         if self.method == "exact":
             for i in range(60):
                 symb = f"minutes_{i}"
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
             for i in range(24):
                 symb = f"hours_{i}"
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
             for i in range(7):
                 symb = f"days_{i}"
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
             for i in range(52):
                 symb = f"weeks_{i}"
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
             for i in range(100):
                 symb = f"years_{i}"
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
         
         # add approximate time bins if approximate time passage method chosen
@@ -400,7 +407,9 @@ class TimeTokenizer():
             time_symbols = ["minutes_5-minutes_15", "minutes_15-hours_1", "hours_1-hours_2", "hours_2-hours_6", "hours_6-hours_12", "hours_12-days_1", "days_1-days_3", "days_3-weeks_1", "weeks_1-weeks_2", "weeks_2-months_1", "months_1-monnths_3", "months_3-months_6", "months_6"]
             for symb in time_symbols:
                 self.time_symbols.add(symb)
+                self.base_tokenizer.symbols.add(symb)
                 self.base_tokenizer.symbol_to_ids[symb] = self.ontology.next_id
+                self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
     
     def tokenize(self, events):
@@ -560,13 +569,13 @@ class TimeTokenizer():
                 if len(temp_time_symbols) > 0:
 
                     # compute time passage
-                    time_delta = self.detokenize_time_diff(temp_time_tokens)
+                    tdelt = self.detokenize_time_diff(temp_time_tokens)
 
                     # then reset temp time tokens
                     temp_time_tokens = []
 
                     # get current time
-                    current_time = previous_time + time_delta
+                    current_time = previous_time + tdelt
                 
                 # otherwise, propagate previous time
                 else:
@@ -588,24 +597,155 @@ class TimeTokenizer():
     def tokenize_time_diff(time_diff, floor="minutes_5", cieling="years_10"):
         """
         Args:
-            time_diff (datetime): ...
+            time_diff (timedelta): ...
         Returns:
             tokens (List<int>): ...
         """
 
-        # TODO: tokenize time difference given method (e.g. 1 hr 1 min, exact -> {1 hr}{1 min})
+        # return empty list if the time difference is too short to tokenize
+        floor_tdelt = self.code_to_tdelt(floor)
+        too_short = (time_diff < floor_tdelt)
+        if too_short:
+            return []
+        
+        # if time_diff larger than cieling, cap it
+        cieling_tdelt = self.code_to_tdelt(cieling)
+        too_long = (cieling_tdelt < time_dff)
+        if too_long:
+            time_diff = cieling_tdelt
 
-        # TODO: return empty list if the time difference is too short to tokenize
+        # if exact method is chosen
+        if self.method == "exact":
+
+            # compute num years
+            total_days = time_diff.days
+            years = int((total_days - (total_days % 365)) / 365)
+
+            # compute num weeks from leftover days
+            leftover_days = total_days - years * 356
+            weeks = int((leftover_days - (leftover_days % 7)) / 7)
+
+            # compute num days from leftover days
+            days = leftover_days - weeks * 7
+
+            # read hours, minutes directly
+            hours = time_diff.hours
+            minutes = time_diff.minutes
+
+            # form string codes
+            years_code = f"years_{years}"
+            weeks_code = f"weeks_{weeks}"
+            days_code = f"days_{days}"
+            hours_code = f"hours_{hours}"
+            minutes_code = f"minutes_{minutes}"
+
+            # tokenize codes
+            codes = [years_code, weeks_code, days_code, hours_code, minutes_code]
+            codes = [code for code in codes if code not None]
+            time_tokens = [self.base_tokenizer.symbol_to_id[code] for code in codes]
+
+            return time_tokens
+        
+        # if approximate method is chosen
+        elif self.method == "approximate":
+
+            # attempt to locate the bin for the time symbol
+            for tsymb in self.time_symbols:
+                lower_code, upper_code = tsymb.split("-")
+                lower_tdelt = self.code_to_tdelt(lower_code)
+                upper_tdelt = self.code_to_tdelt(upper_code)
+                if (lower_tdelt <= time_diff and time_diff < upper_tdelt):
+                    return self.ontology.symbol_to_id[tsymb]
+
+            # if we no bin is located, approximate the time with 6 mo tokens and return list
+            time_tokens = []
+            temp_time_diff = time_diff
+            sixmo = timedelta(days=(30.5*6))
+            while temp_time_diff > sixmo:
+                temp_time_diff -= sixmo
+                time_tokens.append(self.ontology.symbol_to_id["=months_6"])
+            threemo = timedelta(days=(30.5*3))
+            if time_diff > threemo:
+                time_tokens.append(self.ontology.symbol_to_id["=months_6"])
+            return time_tokens
+        else:
+            raise ValueError(f"TimeTokenizer.tokenize_time_diff(): invalid time passage method {self.method} recieved. How did we get here? This should have been caught by __init__().")
     
     def detokenize_time_diff(time_tokens):
         """
         Args:
             tokens (List<int>): ...
         Returns:
-            time_diff (datetime): ...
+            time_diff (timedelta): ...
         """
+
+        # handle case where there are no tokens
+        if len(time_tokens) == 0:
+            return timedelta(days=0)
+
+        # translate time tokens to time codes
+        time_codes = [self.base_tokenizer.id_to_symbol[token] for token in time_tokens]
+
+        # handle exact conversion
+        if method == "exact":
+
+            # init time diff to 0
+            time_diff = timedelta(days=0)
+
+            # add every token's diff to total then return
+            for tc in time_codes:
+                time_diff += self.code_to_tdelt(tc)
+            return time_diff
         
-        # TODO: use tokens to determine time difference and return datetime
+        # handle approxiumate method
+        elif method == "approximate":
+
+            # if the time token consists of a single range token
+            if len(time_codes) == 1:
+                time_code = time_codes[0]
+                lower, upper = time_code.split("-")
+                lower_tdelt = self.code_to_tdelt(lower)
+                upper_tdelt = self.code_to_tdelt(upper)
+                return (lower_tdelt + upper_tdelt) / 2
+            
+            # otherwise it consists of multiple six-month tokens
+            else:
+                return timedelta(days=(30.5 * 6 * len(time_codes)))
+        
+        # handle unspecified method
+        else:
+            raise ValueError()
+    
+    def code_to_tdelt(code):
+        """
+        Args:
+            code (string):
+                Description:
+                    one of: minutes_i, hours_i, days_i, weeks_i, months_i, years_i
+        Returns:
+            tdelt (timedelta): time delta representing equivalent passage of time
+        """
+
+        # convert code to timedelta
+        unit, magnitude = code.split("_")
+        try:
+            maginitude = int(magnitude)
+        except:
+            raise ValueError()
+        if unit == "minutes":
+            return timedelta(minutes=magnitude)
+        elif unit == "hours":
+            return timedelta(hours=magnitude)
+        elif unit == "days":
+            return timedelta(days=magnitude)
+        elif unit == "weeks":
+            return timedelta(days=7*magnitude)
+        elif unit == "months":
+            return timedelta(days=(30.5)*magnitude)
+        elif unit == "years":
+            return timedelta(days=(365)*magnitude)
+        else:
+            raise ValueError()
 
 class RolloutTokenizer():
     pass
