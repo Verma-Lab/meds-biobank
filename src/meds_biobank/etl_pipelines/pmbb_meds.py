@@ -4,8 +4,7 @@ from meds_biobank import concepts
 
 OMOP_BIRTH = concepts.OMOP_BIRTH
 OMOP_DEATH = concepts.OMOP_DEATH
-OMOP_INPATIENT = concepts.OMOP_INPATIENT
-CUSTOM_CONCEPTS = concepts.CUSTOM_CONCEPTS
+CUSTOM_CONCEPTS = concepts.VISIT_FLAGS
 
 def extract_events(df, table, use_omop_cid=True):
     """

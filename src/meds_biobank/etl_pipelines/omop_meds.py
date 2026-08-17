@@ -3,10 +3,12 @@ from pyspark.sql import Window
 from meds_biobank import concepts
 from meds_biobank.standardizers.standardizers import standardize
 
-PMBB_BIRTH = concepts.PMBB_BIRTH
-PMBB_DEATH = concepts.PMBB_DEATH
+OMOP_BIRTH = concepts.OMOP_BIRTH
+OMOP_DEATH = concepts.OMOP_DEATH
 VISIT_FLAGS = concepts.VISIT_FLAGS
-SPECIAL_CONCEPTS = concepts.SPECIAL_CONCEPTS
+SPECIAL_CONCEPTS = {k:v for k,v in concepts.VISIT_FLAGS.items()}
+SPECIAL_CONCEPTS["OMOP_BIRTH"] = OMOP_BIRTH
+SPECIAL_CONCEPTS["OMOP_DEATH"] = OMOP_DEATH
 
 def extract_events(df, table, measurements_prestandardized=True):
     """
@@ -45,7 +47,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         # get birth events
         birth_events = (
             events
-            .withColumn("concept_id", F.lit(PMBB_BIRTH))
+            .withColumn("concept_id", F.lit(OMOP_BIRTH))
             .withColumn("event_type", F.lit("birth"))
             .select("patient_id", "time", "concept_id", "event_type")
         )
@@ -86,7 +88,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         # get death events
         events = (
             events
-            .withColumn("concept_id", F.lit(PMBB_DEATH))
+            .withColumn("concept_id", F.lit(OMOP_DEATH))
             .withColumn("time", F.to_timestamp(F.col("death_date")))
             .withColumn("event_type", F.lit("death"))
             .select("patient_id", "time", "concept_id", "event_type")
@@ -133,7 +135,7 @@ def extract_events(df, table, measurements_prestandardized=True):
     elif table == "visit_occurrence_supplement":
         flags = list(VISIT_FLAGS.keys())
         stack_args = ", ".join(f"'{c}', {c}" for c in flags)
-        mapping_expr = F.create_map([F.lit(x) for pair in CUSTOM_CONCEPTS.items() for x in pair])
+        mapping_expr = F.create_map([F.lit(x) for pair in VISIT_FLAGS.items() for x in pair])
         events = (
             events
             .withColumn("time", F.to_timestamp(F.col("visit_start_datetime")))
@@ -195,7 +197,10 @@ def extract_events(df, table, measurements_prestandardized=True):
 
         # get observation events
         events = (
-            events.withColumn("time", F.coalesce(F.col("observation_datetime"), F.to_timestamp(F.col("observation_date"))))
+            events
+            .filter(F.col("observation_concept_id") != OMOP_BIRTH) # make sure we only read birth and death events from OMOP birth and death tables
+            .filter(F.col("observation_concept_id") != OMOP_DEATH) # ditto
+            .withColumn("time", F.coalesce(F.col("observation_datetime"), F.to_timestamp(F.col("observation_date"))))
             .withColumn("concept_id", F.col("observation_concept_id"))
             .filter(F.col("concept_id") != 0)
             .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_as_string")))
@@ -456,7 +461,7 @@ def create_concept_schema(events, concept, concept_ancestor):
         "inner"
     ).drop(cn.concept_id)
 
-    # add special concepts (e.g. visit flags): only add ones not already present
+    # add special concepts (e.g. visit flags)
     special_df = (
         events.sparkSession.createDataFrame(
             [(code, name) for name, code in SPECIAL_CONCEPTS.items()],
@@ -464,11 +469,30 @@ def create_concept_schema(events, concept, concept_ancestor):
         )
         .withColumn("ancestors", F.lit(None).cast(cn.schema["ancestors"].dataType))
         .withColumn("factors", F.lit(None).cast(cn.schema["factors"].dataType))
-        .join(cn.select("code"), on="code", how="left_anti")
+
     )
+
+    # drop special concepts that already have a real row in cn (e.g. birth/death
+    # concept ids that also occur as genuine OMOP vocabulary concepts)
+    special_df = special_df.join(cn.select("code"), on="code", how="left_anti")
+
     cn = cn.unionByName(special_df)
 
     return cn
+
+def extract_tasks(
+    concept,
+    concept_ancestor,
+    condition_occurrence,
+    death,
+    drug_exposure,
+    measurement,
+    observation,
+    person,
+    procedure_occurrence,
+    visit_occurrence
+):
+    pass
 
 if __name__ == "__main__":
 
@@ -530,9 +554,14 @@ if __name__ == "__main__":
     # format events
     formatted_events = format_events(post_processed_events)
 
+    # compute concept schema
+    concept_schema = create_concept_schema(formatted_events, concept, concept_ancestor)
+
     # show
     print(formatted_events.limit(25).toPandas())
 
     # set write dir and write
-    write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds.csv"
-    formatted_events.toPandas().to_csv(str(write_path), index=False)
+    events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_events.csv"
+    formatted_events.toPandas().to_csv(str(events_write_path), index=False)
+    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_concept_schema.csv"
+    concept_schema.toPandas().to_csv(str(schema_write_path), index=False)

@@ -263,7 +263,7 @@ class Ontology():
                 setattr(self, struct, None)
             raise
     
-    # TEST: measurements were not roled up
+    # TEST: measurements were not rolled up
     # TEST: every target of rollup map is in self.codes
 
     

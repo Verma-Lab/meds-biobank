@@ -5,6 +5,10 @@
 Stores a number of symbol lists and maps relevant to tracking concepts for tokenization downstream. Has most filled during man routine, compute_concept_ontology().
 Computes decile mapping by binning measurement concepts. Performs ancestry rollup to non-measurement codes accross domains.
 
+## Requirements
+
+Input events: each (measurement) code maps to at most one unit
+
 ## Schemas
 
 1. Ontology Fields

@@ -500,8 +500,8 @@ def standardize(msmt, concept, concept_ancestor):
         msmt_ca
         .filter(F.col("ancestor_concept_id") == 36662633)
         .withColumn("std_concept_id", F.lit(36662633))
-        .withColumn("value_converted", F.lit("NA"))
-        .withColumn("unit_converted", F.lit("NA"))
+        .withColumn("value_converted", F.lit(None))
+        .withColumn("unit_converted", F.lit(None))
     )
     all_frames.append(labs_covid)
 
@@ -582,8 +582,8 @@ def standardize(msmt, concept, concept_ancestor):
         msmt_ca
         .filter(F.col("ancestor_concept_id") == 40652885)
         .withColumn("std_concept_id", F.lit(40652885))
-        .withColumn("value_converted", F.lit("NA"))
-        .withColumn("unit_converted", F.lit("NA"))
+        .withColumn("value_converted", F.lit(None))
+        .withColumn("unit_converted", F.lit(None))
     )
     all_frames.append(labs_ccpab)
 
@@ -635,8 +635,8 @@ def standardize(msmt, concept, concept_ancestor):
         msmt_ca
         .filter(F.col("ancestor_concept_id") == 40657685)
         .withColumn("std_concept_id", F.lit(40657685))
-        .withColumn("value_converted", F.lit("NA"))
-        .withColumn("unit_converted", F.lit("NA"))
+        .withColumn("value_converted", F.lit(None))
+        .withColumn("unit_converted", F.lit(None))
     )
     all_frames.append(labs_rbc_urine)
 
@@ -807,8 +807,8 @@ def standardize(msmt, concept, concept_ancestor):
         msmt_ca
         .filter(F.col("ancestor_concept_id") == 40654016)
         .withColumn("std_concept_id", F.lit(40654016))
-        .withColumn("value_converted", F.lit("NA"))
-        .withColumn("unit_converted", F.lit("NA"))
+        .withColumn("value_converted", F.lit(None))
+        .withColumn("unit_converted", F.lit(None))
     )
     all_frames.append(labs_granulocytes)
 
@@ -1022,8 +1022,8 @@ def standardize(msmt, concept, concept_ancestor):
         msmt_ca
         .filter(F.col("ancestor_concept_id") == 40657704)
         .withColumn("std_concept_id", F.lit(40657704))
-        .withColumn("value_converted", F.lit("NA"))
-        .withColumn("unit_converted", F.lit("NA"))
+        .withColumn("value_converted", F.lit(None))
+        .withColumn("unit_converted", F.lit(None))
     )
     all_frames.append(labs_wbc_urine)
 
