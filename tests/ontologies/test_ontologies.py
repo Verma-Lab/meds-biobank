@@ -77,3 +77,14 @@ def test_ontologies(spark, meds_events, meds_concept_schema):
     ontology.compute_concept_ontology(meds_events, meds_concept_schema)
     ontology.bin_measurements(meds_events)
     ontology.rollup_concepts(meds_events, meds_concept_schema, threshold=0.05)
+
+    # TODO: test fields are not none
+    assert (ontology.codes is not None)
+
+    # TODO: test measurements were not rolled up
+    for k in ontology.rollup_map:
+        assert (ontology.code_to_event_type[k] is not "measurement")
+
+    # test every target of rollup map is in self.codes
+    for k,v in ontology.rollup_map.items():
+        assert (v in ontology.codes)
