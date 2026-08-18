@@ -62,29 +62,29 @@ class BaseTokenizer():
             # add special tokens
             for st in SPECIAL_TOKENS:
                 self.symbol_to_id[st] = self.next_id
-                next_id += 1
+                self.next_id += 1
 
             # add qualifiers if requested
-            if self.qualifiers:
+            if self.ontology.qualifiers:
                 for qual in self.ontology.qualifiers:
                     self.symbol_to_id[qual] = self.next_id
                     self.next_id += 1
                 
             # add event_types if requested
-            if self.event_types:
-                for et in self.event_types:
+            if self.ontology.event_types:
+                for et in self.ontology.event_types:
                     self.symbol_to_id[et] = self.next_id
                     self.next_id += 1
             
             # add factors if requested
-            if self.factors:
-                for fact in self.factors:
+            if self.ontology.factors:
+                for fact in self.ontology.factors:
                     if fact not in self.symbol_to_id:
                         self.symbol_to_id[fact] = self.next_id
                         self.next_id += 1
 
             # build id_to_symbol from symbol_to_id
-            id_to_symbol = {v:k for k,v in self.symbol_to_id}
+            id_to_symbol = {v:k for k,v in self.symbol_to_id.items()}
         
         except:
 
@@ -121,6 +121,9 @@ class BaseTokenizer():
                     event_types (List<int>): sequence of event type tokens same length as codes, None for decile tokens
                     factors (List<List<int>>): sequence of lists of factor tokens same length as codes, can be None or empty list so be careful
         """
+
+        if None in (self.symbols, self.symbol_to_id, self.id_to_symbol):
+            raise ValueError("BaseTokenizer.tokenize(): symbols, symbol_to_id, and/or id_to_symbol are not initialized. Did you run Tokenizer.build_vocab() yet?")
 
         # init token list, add BOS
         tokens = {
@@ -178,7 +181,7 @@ class BaseTokenizer():
 
             # otherwise if we know the code, look up token as normal in symbol table
             else:
-                code_token = self.symbol_to_id["code"]
+                code_token = self.symbol_to_id[code]
             
             # TODO: convert into option to skip code or not (skip for now)
             # if we do not know the code token, skip this event (continue)
@@ -190,7 +193,11 @@ class BaseTokenizer():
 
             # if code is msmt code, handle value
             if code in self.ontology.code_to_bin_ranges:
+
+                # extract numeric value field
                 value = event["numeric_value"]
+
+                # if there is a numeric value, compute its bin and append to codes
                 if value != None:
                     value = float(value)
                     if value <= 0.0:
@@ -204,11 +211,15 @@ class BaseTokenizer():
                                 break
                         value_code = f"bin_{bin}"
                     value_token = self.symbol_to_id[value_code]
+                    tokens["codes"].append(value_token)
+                
+                # if value is none, capture
                 else:
                     value_token = None
+
+            # if code is not msmt code, register that value token is none for book-keeping
             else:
                 value_token = None
-            tokens["codes"].append(value_token)
 
             # handle times
             tokens["times"].append(event["time"])
@@ -216,12 +227,15 @@ class BaseTokenizer():
                 tokens["times"].append(event["time"])
 
             # handle factors if requested
-            if self.factors and event["event_type"] in self.factor_types:
-                factor_codes = self.ontology.code_to_factors[code]
-                factor_tokens = []
-                for fc in factor_codes:
-                    factor_tokens.append(self.symbol_to_id[fc])
-                tokens["factors"].append(factor_tokens)
+            if self.factors:
+                if (event["event_type"] in self.factor_types) and (code in self.ontology.code_to_factors): # if event type is a requested one for factors and the code has actual factors
+                    factor_codes = self.ontology.code_to_factors[code]
+                    factor_tokens = []
+                    for fc in factor_codes:
+                        factor_tokens.append(self.symbol_to_id[fc])
+                    tokens["factors"].append(factor_tokens)
+                else:
+                    tokens["factors"].append(None)
                 if value_token is not None:
                     tokens["factors"].append(None)
 
@@ -238,12 +252,12 @@ class BaseTokenizer():
             # handle event types
             if self.event_types:
                 event_type_code = event["event_type"]
-                event_type_token = self.symbol_to_id[event_type_token]
+                event_type_token = self.symbol_to_id[event_type_code]
                 tokens["event_types"].append(event_type_token)
                 if value_token is not None:
                     tokens["event_types"].append(None)
             
-            return tokens
+        return tokens
             
 
     def detokenize(self, tokens):
@@ -964,7 +978,14 @@ if __name__ == "__main__":
     ontology.load_from_disk(str(ontology_data_dir), overwrite=False)
 
     # create base tokenizer
-    bt = BaseTokenizer(ontology, qualifiers=False, event_types=True, factors=True, factor_types=["drug", "procedure", "measurement"])
+    bt = BaseTokenizer(
+        ontology,
+        qualifiers=False,
+        event_types=True,
+        factors=True,
+        factor_types=["drug", "procedure", "measurement", "condition", "observation"]
+    )
+    bt.build_vocab()
 
     # load a patient
     pt_ids = [row["patient_id"] for row in meds_events.select("patient_id").distinct().collect()]
@@ -983,8 +1004,13 @@ if __name__ == "__main__":
             "visit_id": row["visit_id"]
         } for row in pt_rows.collect()
     ]
-    print(events)
+    for event in events:
+        print(event)
+        print("-"*80)
 
     # tokenize the patient
+    tokens = bt.tokenize(events)
+    for i in range(len(tokens["codes"])):
+        print(f"|{tokens['codes'][i]}|{tokens['times'][i]}|{tokens['event_types'][i]}|{tokens['factors'][i]}|")
 
     # detokenize the patient
