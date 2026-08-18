@@ -505,6 +505,7 @@ if __name__ == "__main__":
     import shutil
     from dotenv import load_dotenv
     import os
+    from meds_biobank.standardizers.standardizers import standardize
 
     # create spark session
     spark = (
@@ -520,6 +521,14 @@ if __name__ == "__main__":
     REPO_ROOT = Path(__file__).resolve().parents[3]
     data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"]
 
+    # read concept and concept ancestor dataframes
+    concept = spark.read.csv(str(data_dir / "concept.csv"), header=True, inferSchema=True)
+    concept_ancestor = spark.read.csv(str(data_dir / "concept_ancestor.csv"), header=True, inferSchema=True)
+
+    # read and standardize measurements
+    measurement = spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+    std_measurement = standardize(measurement, concept, concept_ancestor)
+
     # read data tables
     tables = [
         spark.read.csv(str(data_dir / "condition_occurrence.csv"), header=True, inferSchema=True),
@@ -529,7 +538,7 @@ if __name__ == "__main__":
         spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+        std_measurement
     ]
 
     # record table names

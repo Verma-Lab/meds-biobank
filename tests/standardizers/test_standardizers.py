@@ -1,5 +1,6 @@
 from meds_biobank.standardizers.standardizers import standardize, autostd
 import pyspark.sql.functions as F
+from pyspark.sql.types import StringType, IntegerType, DoubleType
 
 def test_standardizers(spark, measurement, concept, concept_ancestor):
 
@@ -37,3 +38,11 @@ def test_standardizers(spark, measurement, concept, concept_ancestor):
     # test that every measurement id that went in, came out
     std_msmt_ids = std_msmt.select("measurement_id").distinct()
     assert (all_msmt_ids.count() == std_msmt_ids.count())
+
+    # test that field data types are correct
+    assert isinstance(std_msmt.schema["std_concept_id"].dataType, IntegerType)
+    assert isinstance(std_msmt.schema["value_converted"].dataType, DoubleType)
+    assert isinstance(std_msmt.schema["unit_converted"].dataType, StringType)
+
+    # ensure no null std concept ids
+    assert (std_msmt.filter(F.col("std_concept_id").isNull()).count() == 0)
