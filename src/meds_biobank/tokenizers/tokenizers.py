@@ -179,6 +179,11 @@ class BaseTokenizer():
             else:
                 code_token = self.symbol_to_id["code"]
             
+            # TODO: convert into option to skip code or not
+            # if we do not know the code token, skip this event (continue)
+            if code_token is None:
+                continue
+            
             # add token to growing list
             tokens["codes"].append(code_token)
 
@@ -777,7 +782,7 @@ class RolloutTokenizer():
     
     def tokenize(events):
 
-        # if tokenizer is a base tokenizer, times is full (although time for BOS will be none)
+        # if tokenizer is a base tokenizer, times is full (although time for BOS will be none), but if not, then there are not times
         
         # compute base tokens
         base_tokens = self.tokenizer.tokenize(events)
@@ -797,7 +802,7 @@ class RolloutTokenizer():
             # if user requested event types, insert into sequence
             if self.event_types:
                 event_type_token == events["event_types"][i]
-                if event_type_token is not None:
+                if event_type_token not None:
                     unrolled_tokens["tokens"].append(event_type_token)
                     if "times" in events:
                         unrolled_tokens["times"].append(curr_time)
@@ -805,7 +810,7 @@ class RolloutTokenizer():
             # if user requested quals, insert into sequence
             if self.qualifiers:
                 qualifier_tokens = events["qualifiers"][i]
-                if qualifier_tokens != None:
+                if qualifier_tokens not None:
                     if len(qualifier_tokens) > 0:
                         unrolled_tokens["codes"].extend(qualifier_tokens)
                         if "times" in events:
@@ -814,7 +819,7 @@ class RolloutTokenizer():
             # if there are requested factors, insert them into sequence
             if self.factors:
                 factor_tokens = events["factors"][i]
-                if factor_tokens != None:
+                if factor_tokens not None:
                     if len(factor_tokens) > 0:
                         unrolled_tokens["codes"].extend(factor_tokens)
                         if "times" in events:
@@ -829,8 +834,94 @@ class RolloutTokenizer():
     
     def detokenize(tokens):
 
+        # tokens will have fields: "codes", and optionally "times" (almost all non-na)
+
         # TODO: roll requested fields
-        rolled_tokens = ...
+        rolled_tokens = {
+            "codes": []
+        }
+        if "times" in tokens:
+            rolled_tokens["times"] = []
+        if self.event_types:
+            rolled_tokens["event_types"] = []
+        if self.qualifiers:
+            rolled_tokens["qualifiers"] = []
+        if self.factors:
+            rolled_tokens["factors"] = []
+        
+        # init loop var
+        i = 0
+
+        # iterate through codes
+        while i < range(len(tokens["codes"])):
+
+            # extract token and associated code
+            token = tokens["codes"][i]
+            code = self.tokenizer.id_to_symbol[token]
+
+            # extract time if requested
+            if "times" in tokens:
+                curr_time = tokens["times"][i]
+            
+            # process event type token
+            if self.event_types:
+                if code in self.tokenizer.ontology.event_types:
+                    rolled_tokens["event_types"].append(token)
+                    i += 1
+                    continue
+            
+            # process qualifier tokens and consume stretch
+            if self.qualifiers:
+                if code in self.tokenizer.ontology.qualifiers:
+                    qualifier_tokens = []
+                    while code in self.tokenizer.ontology.qualifiers:
+                        qualifier_tokens.append(token)
+                        i += 1
+                        token = tokens["codes"][i]
+                        code = self.tokenizer.id_to_symbol[token]
+                    rolled_tokens["qualifiers"].append(qualifier_tokens)
+                    continue
+            
+            # process factor tokens and consume stretch
+            if self.factors:
+                if code in self.tokenizer.ontology.factors:
+                    factor_tokens = []
+                    while code in self.tokenizer.ontology.factors:
+                        factor_tokens.append(token)
+                        i += 1
+                        token = tokens["codes"][i]
+                        code = self.tokenizer.id_to_symbol[token]
+                    rolled_tokens["factors"].append(factor_tokens)
+                    continue
+
+            # process primary code and consume stretch, stamp time, and add nones to auxiliary structures
+            if code in self.tokenizer.ontology.codes:
+                rolled_tokens["codes"].append(token)
+                if "times" in tokens:
+                    rolled_tokens["times"].append(tokens["times"][i])
+                num_codes = len(rolled_tokens["codes"])
+                if self.event_types:
+                    while len(rolled_tokens["event_types"]) < num_codes:
+                        rolled_tokens["event_types"].append(None)
+                if self.qualifiers:
+                    while len(rolled_tokens["qualifiers"]) < num_codes:
+                        rolled_tokens["qualifiers"].append(None)
+                if self.factors:
+                    while len(rolled_tokens["factors"]) < num_codes:
+                        rolled_tokens["factors"].append(None)
+                i += 1
+                continue
+            
+            # process time token(s) if these are present
+            if isinstance(self.tokenizer, TimeTokenizer):
+                if code in self.tokenizer.time_symbols:
+                    rolled_tokens["codes"].append(token)
+                    if self.event_types:
+                        rolled_tokens["event_types"].append(None)
+                    if self.qualifiers:
+                        rolled_tokens["qualifiers"].ppend(None)
+                    if self.factors:
+                        rolled_tokens["factors"].append(None)
         
         return self.tokenizer.detokenize(rolled_tokens)
 
