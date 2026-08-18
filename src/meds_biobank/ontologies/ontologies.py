@@ -314,7 +314,7 @@ if __name__ == "__main__":
     spark = (
         SparkSession.builder
         .master("local[2]")
-        .appName("meds-ontology")
+        .appName("meds-biobank:ontology")
         .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
     )

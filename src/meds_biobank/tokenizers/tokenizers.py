@@ -1,6 +1,7 @@
 from meds_biobank.ontologies.ontologies import Ontology
 import math
 from datetime import datetime, timezone, timedelta
+import pyspark.sql.functions as F
 
 SPECIAL_TOKENS = ["BOS", "BOV"]
 
@@ -83,7 +84,7 @@ class BaseTokenizer():
                         self.next_id += 1
 
             # build id_to_symbol from symbol_to_id
-            id_to_symbol = {v:k, for k,v in self.symbol_to_id}
+            id_to_symbol = {v:k for k,v in self.symbol_to_id}
         
         except:
 
@@ -114,11 +115,11 @@ class BaseTokenizer():
                 Description:
                     dict of token lists for codes and annotations
                 Schema:
-                    codes (List<int>): ...
-                    times (List<datetime>): ...
-                    qualifiers (List<int>): ...
-                    event_types (List<int>): ...
-                    factors (List<int>): ...
+                    codes (List<int>): sequence of primary and decile code tokens
+                    times (List<datetime>): sequence of times for primary and decile tokens (decile token time = associated msmt_concept time), None for BOS
+                    qualifiers (List<List<int>>): sequence of lists of qualifier tokens, one list per event
+                    event_types (List<int>): sequence of event type tokens same length as codes, None for decile tokens
+                    factors (List<List<int>>): sequence of lists of factor tokens same length as codes, can be None or empty list so be careful
         """
 
         # init token list, add BOS
@@ -179,7 +180,7 @@ class BaseTokenizer():
             else:
                 code_token = self.symbol_to_id["code"]
             
-            # TODO: convert into option to skip code or not
+            # TODO: convert into option to skip code or not (skip for now)
             # if we do not know the code token, skip this event (continue)
             if code_token is None:
                 continue
@@ -212,10 +213,10 @@ class BaseTokenizer():
             # handle times
             tokens["times"].append(event["time"])
             if value_token is not None:
-                tokens["times"].append(None)
+                tokens["times"].append(event["time"])
 
             # handle factors if requested
-            if self.factors and event["event_type"] is in self.factor_types:
+            if self.factors and event["event_type"] in self.factor_types:
                 factor_codes = self.ontology.code_to_factors[code]
                 factor_tokens = []
                 for fc in factor_codes:
@@ -336,7 +337,7 @@ class BaseTokenizer():
                     if code in self.ontology.code_to_bin_ranges:
 
                         # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
-                        bin_int = int(next_token_code.split(".")[1]
+                        bin_int = int(next_token_code.split(".")[1])
                         mini = float(self.ontology.code_to_bin_ranges[code][bin_int]["min"])
                         maxi = float(self.ontology.code_to_bin_ranges[code][bin_int]["max"])
                         event["numeric_value"] = (mini+maxi)/2
@@ -355,7 +356,7 @@ class TimeTokenizer():
             raise ValueError("TimeTokenizer.__init__(): base_tokenizer is not of class BaseTokenizer.")
 
         # guard against invalid method arguments
-        if method is not in {"approximate", "exact"}:
+        if method not in {"approximate", "exact"}:
             raise ValueError(f"TimeTokenizer.__init__(): method is supposed to be either \"approximate\" or \"exact\" but detected {method}.")
 
         # ensure that base tokenizer has already set vocab
@@ -649,7 +650,7 @@ class TimeTokenizer():
 
             # tokenize codes
             codes = [years_code, weeks_code, days_code, hours_code, minutes_code]
-            codes = [code for code in codes if code not None]
+            codes = [code for code in codes if code is not None]
             time_tokens = [self.base_tokenizer.symbol_to_id[code] for code in codes]
 
             return time_tokens
@@ -802,7 +803,7 @@ class RolloutTokenizer():
             # if user requested event types, insert into sequence
             if self.event_types:
                 event_type_token == events["event_types"][i]
-                if event_type_token not None:
+                if event_type_token is not None:
                     unrolled_tokens["tokens"].append(event_type_token)
                     if "times" in events:
                         unrolled_tokens["times"].append(curr_time)
@@ -810,7 +811,7 @@ class RolloutTokenizer():
             # if user requested quals, insert into sequence
             if self.qualifiers:
                 qualifier_tokens = events["qualifiers"][i]
-                if qualifier_tokens not None:
+                if qualifier_tokens is not None:
                     if len(qualifier_tokens) > 0:
                         unrolled_tokens["codes"].extend(qualifier_tokens)
                         if "times" in events:
@@ -819,7 +820,7 @@ class RolloutTokenizer():
             # if there are requested factors, insert them into sequence
             if self.factors:
                 factor_tokens = events["factors"][i]
-                if factor_tokens not None:
+                if factor_tokens is not None:
                     if len(factor_tokens) > 0:
                         unrolled_tokens["codes"].extend(factor_tokens)
                         if "times" in events:
@@ -836,7 +837,7 @@ class RolloutTokenizer():
 
         # tokens will have fields: "codes", and optionally "times" (almost all non-na)
 
-        # TODO: roll requested fields
+        # roll requested fields
         rolled_tokens = {
             "codes": []
         }
@@ -927,3 +928,63 @@ class RolloutTokenizer():
 
 class Textualizer():
     pass
+
+if __name__ == "__main__":
+
+    # imports
+    from pyspark.sql import SparkSession
+    from pathlib import Path
+    from dotenv import load_dotenv
+    import os
+    import random
+
+    # set seed
+    random.seed(42)
+
+    # setup
+    load_dotenv()
+    spark = (
+        SparkSession
+        .builder
+        .master("local[2]")
+        .appName("meds-biobank:tokenizer")
+        .config("spark.sql.shuffle.partitions", "2")
+        .getOrCreate()
+    )
+
+    # read meds events
+    REPO_ROOT = Path(__file__).resolve().parents[3]
+    MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"]
+    meds_events_path = MEDS_DATA_DIR / "meds_events.parquet"
+    meds_events = spark.read.parquet(str(meds_events_path))
+
+    # read ontology
+    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
+    ontology = Ontology()
+    ontology.load_from_disk(str(ontology_data_dir), overwrite=False)
+
+    # create base tokenizer
+    bt = BaseTokenizer(ontology, qualifiers=False, event_types=True, factors=True, factor_types=["drug", "procedure", "measurement"])
+
+    # load a patient
+    pt_ids = [row["patient_id"] for row in meds_events.select("patient_id").distinct().collect()]
+    rand_id = random.choice(pt_ids)
+    pt_rows = meds_events.filter(F.col("patient_id") == rand_id).orderBy("time") # ensure ordering
+    events = [
+        {
+            "patient_id": row["patient_id"],
+            "code": row["code"],
+            "time": row["time"],
+            "end": row["end"],
+            "numeric_value": row["numeric_value"],
+            "text_value": row["text_value"],
+            "unit": row["unit"],
+            "event_type": row["event_type"],
+            "visit_id": row["visit_id"]
+        } for row in pt_rows.collect()
+    ]
+    print(events)
+
+    # tokenize the patient
+
+    # detokenize the patient
