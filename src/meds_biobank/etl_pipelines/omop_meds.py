@@ -248,7 +248,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         raise Exception(f"Table {table} not supported")
 
     # catch missing cols
-    catch_cols = ["value", "end", "event_type", "visit_id", "unit", "measurement_id"]
+    catch_cols = ["value", "end", "event_type", "visit_id", "unit"]
     for col in catch_cols:
         if col not in events.columns:
             events = events.withColumn(col, F.lit(None))
@@ -267,7 +267,7 @@ def gather_events(event_dfs):
     Args:
         event_dfs (List<pyspark.sql.DataFrame>):
             Desc: 
-            Df Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|, |measurement_id| (drop later)
+            Df Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
     Returns:
         all_events (pyspark.sql.DataFrame):
             Desc: 
@@ -569,7 +569,8 @@ if __name__ == "__main__":
     print(formatted_events.limit(25).toPandas())
 
     # set write dir and write
-    events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_events.csv"
-    formatted_events.toPandas().to_csv(str(events_write_path), index=False)
-    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_concept_schema.csv"
-    concept_schema.toPandas().to_csv(str(schema_write_path), index=False)
+    events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_events.parquet"
+    formatted_events.write.mode('overwrite').parquet(str(events_write_path))
+    
+    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_concept_schema.parquet"
+    concept_schema.write.mode('overwrite').parquet(str(schema_write_path))

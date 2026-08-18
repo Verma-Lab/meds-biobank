@@ -323,10 +323,10 @@ if __name__ == "__main__":
     load_dotenv()
     REPO_ROOT = Path(__file__).resolve().parents[3]
     meds_data_dir = REPO_ROOT / os.environ["MEDS_DATA_DIR"]
-    events_path = meds_data_dir / "meds.csv"
-    concept_schema_path = meds_data_dir / "concept_schema.csv"
-    events = spark.read.csv(str(events_path), header=True, inferSchema=True)
-    concept_schema = spark.read.csv(str(meds_data_dir / "concept.csv"), header=True, inferSchema=True)
+    events_path = meds_data_dir / "meds_events.parquet"
+    concept_schema_path = meds_data_dir / "meds_concept_schema.parquet"
+    events = spark.read.parquet(str(events_path))
+    concept_schema = spark.read.parquet(str(concept_schema_path))
 
     # set dirname
     ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
