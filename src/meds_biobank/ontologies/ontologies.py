@@ -248,7 +248,12 @@ class Ontology():
             for struct in maps:
                 path = os.path.join(ontology_data_dir, f"{struct}.json")
                 with open(path, "r") as file:
-                    setattr(self, struct, json.load(file))
+                    raw = json.load(file)
+                if struct == "code_to_bin_ranges":
+                    raw = {int(k): {int(dk): dv for dk, dv in v.items()} for k, v in raw.items()}
+                else:
+                    raw = {int(k): v for k, v in raw.items()}
+                setattr(self, struct, raw)
         
         except Exception:
 

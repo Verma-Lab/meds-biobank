@@ -84,7 +84,7 @@ class BaseTokenizer():
                         self.next_id += 1
 
             # build id_to_symbol from symbol_to_id
-            id_to_symbol = {v:k for k,v in self.symbol_to_id.items()}
+            self.id_to_symbol = {v:k for k,v in self.symbol_to_id.items()}
         
         except:
 
@@ -315,6 +315,7 @@ class BaseTokenizer():
             
             # skip beginning of sequence
             if code == "BOS":
+                i += 1
                 continue
 
             # init blank event
@@ -337,30 +338,47 @@ class BaseTokenizer():
             event["time"] = tokens["times"][i]
 
             # set event event_type
-            event[event_type] = self.ontology.code_to_event_type[code]
+            event["event_type"] = self.ontology.code_to_event_type[code]
 
             # set event numeric_value and unit
             if i <= (n-2):
 
                 # if next token is a decile bin
                 next_token = tokens["codes"][i+1]
-                next_token_code = self.ontology.id_to_symbol[next_token]
-                if next_token_code.startswith("bin_"):
+                next_token_symbol = self.id_to_symbol[next_token]
+                if isinstance(next_token_symbol, str):
+                    if next_token_symbol.startswith("bin_"):
 
-                    # if we can translate bins for this code
-                    if code in self.ontology.code_to_bin_ranges:
+                        # if we can translate bins for this code
+                        if code in self.ontology.code_to_bin_ranges:
 
-                        # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
-                        bin_int = int(next_token_code.split(".")[1])
-                        mini = float(self.ontology.code_to_bin_ranges[code][bin_int]["min"])
-                        maxi = float(self.ontology.code_to_bin_ranges[code][bin_int]["max"])
-                        event["numeric_value"] = (mini+maxi)/2
-                        event["unit"] = self.ontology.code_to_unit[code]
-                        i += 2
-                        continue
+                            # capture bin int
+                            bin_int = int(next_token_symbol.split("_")[1])
+
+                            # handle 0 case
+                            if (bin_int == 0):
+                                event["numeric_value"] = 0
+                                event["unit"] = self.ontology.code_to_unit[code]
+                                i += 2
+                                events.append(event)
+                                continue
+
+                            # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
+                            mini = float(self.ontology.code_to_bin_ranges[code][bin_int]["min"])
+                            maxi = float(self.ontology.code_to_bin_ranges[code][bin_int]["max"])
+                            event["numeric_value"] = math.expm1((mini+maxi)/2)
+                            event["unit"] = self.ontology.code_to_unit[code]
+                            i += 2
+                            events.append(event)
+                            continue
+
+            # add event to events
+            events.append(event)
 
             # increment counter for manual loop
             i += 1
+
+        return events
 
 class TimeTokenizer():
     def __init__(self, base_tokenizer, method="approximate"):
@@ -1004,6 +1022,7 @@ if __name__ == "__main__":
             "visit_id": row["visit_id"]
         } for row in pt_rows.collect()
     ]
+    events = events[:15]
     for event in events:
         print(event)
         print("-"*80)
@@ -1014,3 +1033,7 @@ if __name__ == "__main__":
         print(f"|{tokens['codes'][i]}|{tokens['times'][i]}|{tokens['event_types'][i]}|{tokens['factors'][i]}|")
 
     # detokenize the patient
+    decoded_events = bt.detokenize(tokens)
+    for event in decoded_events:
+        print(event)
+        print("-"*80)
