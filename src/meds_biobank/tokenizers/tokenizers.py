@@ -770,19 +770,60 @@ class RolloutTokenizer():
                 raise ValueError()
         
         # init fields
-        self.base_tokenizer = base_tokenizer
-        self.is_time_tokenizer = (isinstance(tokenizer, TimeTokenizer))
+        self.tokenizer = tokenizer
         self.qualifiers = qualifiers
         self.event_types = event_types
         self.factors = factors
     
     def tokenize(events):
+
+        # if tokenizer is a base tokenizer, times is full (although time for BOS will be none)
         
         # compute base tokens
-        base_tokens = self.base_tokenizer.tokenize(events)
+        base_tokens = self.tokenizer.tokenize(events)
 
-        # TODO: rollout requested fields
-        unrolled_tokens = ...
+        # rollout requested fields
+        unrolled_tokens = {
+            "tokens": []
+        }
+        if "times" in events:
+            unrolled_tokens["times"] = []
+        for i in range(len(events["codes"])):
+
+            # if there is a time, capture it and associate with all unrolled tokens (going forward)
+            if "times" in events:
+                curr_time = events["times"][i]
+
+            # if user requested event types, insert into sequence
+            if self.event_types:
+                event_type_token == events["event_types"][i]
+                if event_type_token is not None:
+                    unrolled_tokens["tokens"].append(event_type_token)
+                    if "times" in events:
+                        unrolled_tokens["times"].append(curr_time)
+
+            # if user requested quals, insert into sequence
+            if self.qualifiers:
+                qualifier_tokens = events["qualifiers"][i]
+                if qualifier_tokens != None:
+                    if len(qualifier_tokens) > 0:
+                        unrolled_tokens["codes"].extend(qualifier_tokens)
+                        if "times" in events:
+                            unrolled_tokens["times"].extend([curr_time for i in range(len(qualifier_tokens))])
+
+            # if there are requested factors, insert them into sequence
+            if self.factors:
+                factor_tokens = events["factors"][i]
+                if factor_tokens != None:
+                    if len(factor_tokens) > 0:
+                        unrolled_tokens["codes"].extend(factor_tokens)
+                        if "times" in events:
+                            unrolled_tokens["times"].extend([curr_time for i in range(len(factor_tokens))])
+
+            # insert the actual code and time
+            unrolled_tokens["codes"].append(events["codes"][i])
+            if "times" in events:
+                unrolled_tokens["times"].append(curr_time)
 
         return unrolled_tokens
     
@@ -791,7 +832,7 @@ class RolloutTokenizer():
         # TODO: roll requested fields
         rolled_tokens = ...
         
-        return self.base_tokenizer.detokenize(rolled_tokens)
+        return self.tokenizer.detokenize(rolled_tokens)
 
 class Textualizer():
     pass
