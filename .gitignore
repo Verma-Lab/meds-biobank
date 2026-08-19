@@ -7,3 +7,5 @@ instructions.txt
 .DS_Store
 .env
 /tests/__pycache__
+/temp_docs
+test.oy

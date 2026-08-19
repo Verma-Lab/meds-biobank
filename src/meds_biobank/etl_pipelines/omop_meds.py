@@ -195,6 +195,8 @@ def extract_events(df, table, measurements_prestandardized=True):
     # observation table
     elif table == "observation":
 
+        # TODO: handle value as concept id
+
         # get observation events
         events = (
             events
@@ -506,6 +508,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     import os
     from meds_biobank.standardizers.standardizers import standardize
+    from meds_biobank import schemas
 
     # create spark session
     spark = (
@@ -522,18 +525,18 @@ if __name__ == "__main__":
     data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "genrated-standard"
 
     # read concept and concept ancestor dataframes
-    concept = spark.read.csv(str(data_dir / "concept.csv"), header=True, inferSchema=True)
-    concept_ancestor = spark.read.csv(str(data_dir / "concept_ancestor.csv"), header=True, inferSchema=True)
+    concept = spark.read.csv(str(data_dir / "concept.csv"), schema=schemas.OMOP_CONCEPT_SCHEMA, header=True)
+    concept_ancestor = spark.read.csv(str(data_dir / "concept_ancestor.csv"), schema=schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, header=True)
 
     # read and standardize measurements
-    measurement = spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+    measurement = spark.read.csv(str(data_dir / "measurement.csv"), schema=schemas.OMOP_MEASUREMENT_SCHEMA, header=True)
     std_measurement = standardize(measurement, concept, concept_ancestor)
 
     # read data tables
     tables = [
-        spark.read.csv(str(data_dir / "condition_occurrence.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "death.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "drug_exposure.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "condition_occurrence.csv"), schema=schemas.OMOP_CONDITION_OCCURRENCE_SCHEMA, header=True),
+        spark.read.csv(str(data_dir / "death.csv"), schema=schemas.OMOP_DEATH_SCHEMA, header=True),
+        spark.read.csv(str(data_dir / "drug_exposure.csv"), schema=schemas.OMOP_DRUG_EXPOSURE_SCHEMA, header=True),
         spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
         spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),

@@ -3,6 +3,7 @@ from pyspark.sql import SparkSession
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from meds_biobank import schemas
 
 load_dotenv()
 
@@ -107,7 +108,7 @@ def drug_exposure(spark, data_dir):
 
 @pytest.fixture(scope="session")
 def measurement(spark, data_dir):
-    return spark.read.csv(str(data_dir / "measurement.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "measurement.csv"), schema=schemas.OMOP_MEASUREMENT_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def observation(spark, data_dir):

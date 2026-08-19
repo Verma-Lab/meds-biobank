@@ -2041,6 +2041,7 @@ if __name__ == "__main__":
     from pathlib import Path
     from dotenv import load_dotenv
     import os
+    from meds_biobank import schemas
 
     # create spark session
     spark = (
@@ -2054,16 +2055,19 @@ if __name__ == "__main__":
 
     # register data paths
     load_dotenv()
-    REPO_ROOT = Path(__file__).parents().resolve[3]
+    REPO_ROOT = Path(__file__).resolve().parents[3]
     OMOP_DATA_DIR = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "generated-standard"
     msmt_path = OMOP_DATA_DIR / "measurement.csv"
     concept_path = OMOP_DATA_DIR / "concept.csv"
     concept_ancestor_path = OMOP_DATA_DIR / "concept_ancestor.csv"
 
+    # set read schemas
+    measurement_schema = schemas.OMOP_MEASUREMENT_SCHEMA
+
     # read measurements and metadata
-    msmt = spark.read.csv(str(msmt_path), header=True, inferSchema=True)
+    msmt = spark.read.csv(str(msmt_path), schema=measurement_schema, header=True)
     concept = spark.read.csv(str(concept_path), header=True, inferSchema=True)
-    concept_ancestor = spark.read.csv(str(concept_ancestor_path), header=True, inferSchema=true)
+    concept_ancestor = spark.read.csv(str(concept_ancestor_path), header=True, inferSchema=True)
 
     # standardize measurements
     std_msmt = standardize(msmt, concept, concept_ancestor)
