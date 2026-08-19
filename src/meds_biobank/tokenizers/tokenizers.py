@@ -328,7 +328,7 @@ class BaseTokenizer():
                 "text_value": None,
                 "unit": None,
                 "event_type": None,
-                "visit_id": None
+                "visit_id": visit_id
             }
 
             # set event code
