@@ -986,12 +986,12 @@ if __name__ == "__main__":
 
     # read meds events
     REPO_ROOT = Path(__file__).resolve().parents[3]
-    MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"]
+    MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     meds_events_path = MEDS_DATA_DIR / "meds_events.parquet"
     meds_events = spark.read.parquet(str(meds_events_path))
 
     # read ontology
-    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
+    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"] / "generated-standard-rolled"
     ontology = Ontology()
     ontology.load_from_disk(str(ontology_data_dir), overwrite=False)
 

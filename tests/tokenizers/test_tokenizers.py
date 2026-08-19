@@ -13,14 +13,14 @@ random.seed(42)
 @pytest.fixture(scope="session")
 def meds_events(spark):
     REPO_ROOT = Path(__file__).resolve().parents[2]
-    MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"]
+    MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     meds_events_path = MEDS_DATA_DIR / "meds_events.parquet"
     return spark.read.parquet(str(meds_events_path))
 
 @pytest.fixture(scope="session")
 def ontology(spark):
     REPO_ROOT = Path(__file__).resolve().parents[2]
-    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
+    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"] / "generated-standard-rolled"
     ontology = Ontology()
     ontology.load_from_disk(str(ontology_data_dir), overwrite=False)
     return ontology

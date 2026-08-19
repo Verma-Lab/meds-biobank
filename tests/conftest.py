@@ -21,7 +21,7 @@ def spark():
 
 @pytest.fixture(scope="session")
 def pmbb_data_dir():
-    return Path(__file__).resolve().parent.parent / os.environ["PMBB_OMOP_DATA_DIR"]
+    return Path(__file__).resolve().parent.parent / os.environ["OMOP_DATA_DIR"] / "generated-pmbb"
 
 @pytest.fixture(scope="session")
 def pmbb_concept_ancestor(spark, pmbb_data_dir):
@@ -83,7 +83,7 @@ def pmbb_vitals(spark, pmbb_data_dir):
 
 @pytest.fixture(scope="session")
 def data_dir():
-    return Path(__file__).resolve().parent.parent / os.environ["OMOP_DATA_DIR"]
+    return Path(__file__).resolve().parent.parent / os.environ["OMOP_DATA_DIR"] / "generated-standard"
 
 @pytest.fixture(scope="session")
 def concept_ancestor(spark, data_dir):

@@ -519,7 +519,7 @@ if __name__ == "__main__":
     # set data dir
     load_dotenv()
     REPO_ROOT = Path(__file__).resolve().parents[3]
-    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"]
+    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "genrated-standard"
 
     # read concept and concept ancestor dataframes
     concept = spark.read.csv(str(data_dir / "concept.csv"), header=True, inferSchema=True)
@@ -569,8 +569,8 @@ if __name__ == "__main__":
     print(formatted_events.limit(25).toPandas())
 
     # set write dir and write
-    events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_events.parquet"
+    events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard" / "meds_events.parquet"
     formatted_events.write.mode('overwrite').parquet(str(events_write_path))
     
-    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "meds_concept_schema.parquet"
+    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "genreated-standard" / "meds_concept_schema.parquet"
     concept_schema.write.mode('overwrite').parquet(str(schema_write_path))

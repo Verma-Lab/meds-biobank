@@ -327,14 +327,14 @@ if __name__ == "__main__":
     # read concept, concept_ancestor, qualifications, and events
     load_dotenv()
     REPO_ROOT = Path(__file__).resolve().parents[3]
-    meds_data_dir = REPO_ROOT / os.environ["MEDS_DATA_DIR"]
+    meds_data_dir = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     events_path = meds_data_dir / "meds_events.parquet"
     concept_schema_path = meds_data_dir / "meds_concept_schema.parquet"
     events = spark.read.parquet(str(events_path))
     concept_schema = spark.read.parquet(str(concept_schema_path))
 
     # set dirname
-    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"]
+    ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"] / "generated-standard-rolled"
 
     # create ontology object, fit, and save
     ontology = Ontology()

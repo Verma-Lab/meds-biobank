@@ -2055,7 +2055,7 @@ if __name__ == "__main__":
     # register data paths
     load_dotenv()
     REPO_ROOT = Path(__file__).parents().resolve[3]
-    OMOP_DATA_DIR = REPO_ROOT / os.environ["OMOP_DATA_DIR"] 
+    OMOP_DATA_DIR = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "generated-standard"
     msmt_path = OMOP_DATA_DIR / "measurement.csv"
     concept_path = OMOP_DATA_DIR / "concept.csv"
     concept_ancestor_path = OMOP_DATA_DIR / "concept_ancestor.csv"
