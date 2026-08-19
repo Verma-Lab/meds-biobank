@@ -123,3 +123,7 @@ def test_extract_std_meds_events(
         .filter(F.col("num_event_types") != 1)
     ).count()
     assert (test_count == 0)
+
+# TODO: ensure that all required fields are never null
+
+# TODO: ensure that all fields are of correct type

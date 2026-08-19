@@ -9,6 +9,7 @@
 - Assign deciles for measurement values based on ontology and inject into token stream after measurement concept tokens. Rollout qualifier, event_type, factor fields as None. Propagate msmt timestamp.
 - Inject BOS at beginning with None fields for all other fields. Inject BOV at beginning of new visit with time equal to time of first event in visit.
 - Detokenize token streams of the same format as tokenizer output.
+- Currently skips/drops events/codes that are not in ontology
 
 ### Parameters
 
@@ -40,19 +41,61 @@
 #### `tokenize(self, events)`
 
 - **Args:**
-  - `events` (`List[Dict[patient_id: int, code: int, time: timestamp, end: timestamp/None, numeric_value: float/None, text_value: str/None, unit: str/None, event_type: str, visit_id: int/None]]`)
-    - List of dict-formatted MEDS events for a single patient.
+  - `events` (`List[Dict]`) — List of dict-formatted MEDS events for a single patient. Each dict:
+
+    | Field | Type |
+    | --- | --- |
+    | `patient_id` | `int` |
+    | `code` | `int` |
+    | `time` | `timestamp` |
+    | `end` | `timestamp` / `None` |
+    | `numeric_value` | `float` / `None` |
+    | `text_value` | `str` / `None` |
+    | `unit` | `str` / `None` |
+    | `event_type` | `str` |
+    | `visit_id` | `int` / `None` |
+
 - **Returns:**
-  - `tokens` (`Dict[codes: List[int], times: List[timestamp], event_types: List[int/None], qualifiers: List[List[int]/None], factors: List[List[int]/None]]`)
-    - Tokenizer representation of patient
+  - `tokens` (`Dict`) — Tokenizer representation of patient:
+
+    | Field | Type |
+    | --- | --- |
+    | `codes` | `List[int]` |
+    | `times` | `List[timestamp]` |
+    | `event_types` | `List[int]` / `None` |
+    | `qualifiers` | `List[List[int]]` / `None` |
+    | `factors` | `List[List[int]]` / `None` |
+
 - **Desc:** Tokenize a partient MEDS event stream using the fields populated by build_vocab and returning the fields requested via BaseTokenizer's boolean Parameters.
 
 #### `detokenize(self, tokens)`
 
 - **Args:**
-  - `tokens` (`Dict[codes: List[int], times: List[timestamp], event_types: List[int/None], qualifiers: List[List[int]/None], factors: List[List[int]/None]]`): Tokenizer representation of patient
+  - `tokens` (`Dict`) — Tokenizer representation of patient:
+
+    | Field | Type |
+    | --- | --- |
+    | `codes` | `List[int]` |
+    | `times` | `List[timestamp]` |
+    | `event_types` | `List[int]` / `None` |
+    | `qualifiers` | `List[List[int]]` / `None` |
+    | `factors` | `List[List[int]]` / `None` |
+
 - **Returns:**
-  - `events` (`List[Dict[patient_id: int, code: int, time: timestamp, end: timestamp, numeric_value: float, text_value: str, unit: str, event_type: str, visit_id: int]]`): List of dict-formatted MEDS events for a single patient.
+  - `events` (`List[Dict]`) — List of dict-formatted MEDS events for a single patient. Each dict:
+
+    | Field | Type |
+    | --- | --- |
+    | `patient_id` | `int` |
+    | `code` | `int` |
+    | `time` | `timestamp` |
+    | `end` | `timestamp` / `None` |
+    | `numeric_value` | `float` / `None` |
+    | `text_value` | `str` / `None` |
+    | `unit` | `str` / `None` |
+    | `event_type` | `str` |
+    | `visit_id` | `int` / `None` |
+
 - **Desc:** Tokenize a partient MEDS event stream using the fields populated by build_vocab and returning the fields requested via BaseTokenizer's boolean Parameters.
 
 ### Example

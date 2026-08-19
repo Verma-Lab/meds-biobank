@@ -60,3 +60,13 @@ def test_base_tokenizer(meds_events, ontology):
 
     # detokenize the patient
     decoded_events = bt.detokenize(tokens)
+
+    # TODO: test that measurement values were tokenized
+
+    # TODO: test that tokenizer round-trips with respect to ontology codes
+
+    # TODO: test that tokenizer sub-fields round-trip for true ontology codes
+
+    # TODO: test that all requested ontology symbols are in the tokenizer symbol fields
+
+    # TODO: what happens when qualifiers are requested but there are no qualifiers?
