@@ -88,23 +88,23 @@ def data_dir():
 
 @pytest.fixture(scope="session")
 def concept_ancestor(spark, data_dir):
-    return spark.read.csv(str(data_dir / "concept_ancestor.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "concept_ancestor.csv"), schema=schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def concept(spark, data_dir):
-    return spark.read.csv(str(data_dir / "concept.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "concept.csv"), schema=schemas.OMOP_CONCEPT_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def condition_occurrence(spark, data_dir):
-    return spark.read.csv(str(data_dir / "condition_occurrence.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "condition_occurrence.csv"), schema=schemas.OMOP_CONDITION_OCCURRENCE_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def death(spark, data_dir):
-    return spark.read.csv(str(data_dir / "death.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "death.csv"), schema=schemas.OMOP_DEATH_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def drug_exposure(spark, data_dir):
-    return spark.read.csv(str(data_dir / "drug_exposure.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "drug_exposure.csv"), schema=schemas.OMOP_DRUG_EXPOSURE_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def measurement(spark, data_dir):
@@ -112,16 +112,16 @@ def measurement(spark, data_dir):
 
 @pytest.fixture(scope="session")
 def observation(spark, data_dir):
-    return spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "observation.csv"), schema=schemas.OMOP_OBSERVATION_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def person(spark, data_dir):
-    return spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "person.csv"), schema=schemas.OMOP_PERSON_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def procedure_occurrence(spark, data_dir):
-    return spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "procedure_occurrence.csv"), schema=schemas.OMOP_PROCEDURE_OCCURRENCE_SCHEMA, header=True)
 
 @pytest.fixture(scope="session")
 def visit_occurrence(spark, data_dir):
-    return spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True)
+    return spark.read.csv(str(data_dir / "visit_occurrence.csv"), schema=schemas.OMOP_VISIT_OCCURRENCE_SCHEMA, header=True)

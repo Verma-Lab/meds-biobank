@@ -95,4 +95,6 @@ def test_ontologies(spark, meds_events, meds_concept_schema):
 
 # TODO: test what actually happens when we use qualifiers
 
-# TODO: test that saev and load round-trips
+# TODO: test that save and load round-trips
+
+# TODO: test schemas

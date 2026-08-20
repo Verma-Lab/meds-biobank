@@ -969,6 +969,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     import os
     import random
+    from meds_biobank import schemas
 
     # set seed
     random.seed(42)
@@ -988,7 +989,7 @@ if __name__ == "__main__":
     REPO_ROOT = Path(__file__).resolve().parents[3]
     MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     meds_events_path = MEDS_DATA_DIR / "meds_events.parquet"
-    meds_events = spark.read.parquet(str(meds_events_path))
+    meds_events = spark.read.parquet(str(meds_events_path), schema=schemas.MEDS_EVENT_SCHEMA)
 
     # read ontology
     ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"] / "generated-standard-rolled"

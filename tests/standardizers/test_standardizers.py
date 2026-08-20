@@ -46,3 +46,5 @@ def test_standardizers(spark, measurement, concept, concept_ancestor):
 
     # ensure no null std concept ids
     assert (std_msmt.filter(F.col("std_concept_id").isNull()).count() == 0)
+
+# TODO: add schema tests

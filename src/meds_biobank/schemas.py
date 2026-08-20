@@ -2,7 +2,8 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     StructType, StructField, DecimalType,
     LongType, IntegerType, DoubleType,
-    DateType, TimestampType, StringType
+    DateType, TimestampType, StringType,
+    ArrayType
 )
 
 OMOP_CONCEPT_SCHEMA = StructType([
@@ -40,7 +41,7 @@ OMOP_MEASUREMENT_SCHEMA = StructType([
     StructField("range_low", DoubleType(), True),
     StructField("range_high", DoubleType(), True),
     StructField("provider_id", LongType(), True),
-    StructField("visit_occurrence_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
     StructField("visit_detail_id", IntegerType(), True),
     StructField("measurement_source_value", StringType(), True),
     StructField("measurement_source_concept_id", IntegerType(), True),
@@ -48,6 +49,34 @@ OMOP_MEASUREMENT_SCHEMA = StructType([
     StructField("unit_source_concept_id", IntegerType(), True),
     StructField("value_source_value", StringType(), True),
     StructField("meas_event_field_concept_id", IntegerType(), True),
+])
+
+STD_OMOP_MEASUREMENT_SCHEMA = StructType([
+    StructField("measurement_id", LongType(), False),
+    StructField("person_id", StringType(), False),
+    StructField("measurement_concept_id", IntegerType(), False),
+    StructField("measurement_date", DateType(), False),
+    StructField("measurement_datetime", TimestampType(), True),
+    StructField("measurement_time", StringType(), True),
+    StructField("measurement_type_concept_id", IntegerType(), True),
+    StructField("operator_concept_id", IntegerType(), True),
+    StructField("value_as_number", DoubleType(), True),
+    StructField("value_as_concept_id", IntegerType(), True),
+    StructField("unit_concept_id", IntegerType(), True),
+    StructField("range_low", DoubleType(), True),
+    StructField("range_high", DoubleType(), True),
+    StructField("provider_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
+    StructField("visit_detail_id", IntegerType(), True),
+    StructField("measurement_source_value", StringType(), True),
+    StructField("measurement_source_concept_id", IntegerType(), True),
+    StructField("unit_source_value", StringType(), True),
+    StructField("unit_source_concept_id", IntegerType(), True),
+    StructField("value_source_value", StringType(), True),
+    StructField("meas_event_field_concept_id", IntegerType(), True),
+    StructField("value_converted", StringType(), True),
+    StructField("unit_converted", StringType(), True),
+    StructField("std_concept_id", IntegerType(), False),
 ])
 
 OMOP_PERSON_SCHEMA = StructType([
@@ -82,7 +111,7 @@ OMOP_DEATH_SCHEMA = StructType([
 ])
 
 OMOP_VISIT_OCCURRENCE_SCHEMA = StructType([
-    StructField("visit_occurrence_id", LongType(), False),
+    StructField("visit_occurrence_id", IntegerType(), False),
     StructField("person_id", StringType(), False),
     StructField("visit_concept_id", IntegerType(), False),
     StructField("visit_start_date", DateType(), False),
@@ -96,9 +125,9 @@ OMOP_VISIT_OCCURRENCE_SCHEMA = StructType([
     StructField("visit_source_concept_id", IntegerType(), True),
     StructField("admitted_from_concept_id", IntegerType(), True),
     StructField("admitted_from_source_value", StringType(), True),
-    StructField("discharged_to_concept_id", IntegerType(), True),
-    StructField("discharged_to_source_value", StringType(), True),
-    StructField("preceding_visit_occurrence_id", LongType(), True),
+    StructField("discharge_to_concept_id", IntegerType(), True), # in OMOP 5.4 this became discharged
+    StructField("discharge_to_source_value", StringType(), True), # in OMOP 5.4 this became discharged
+    StructField("preceding_visit_occurrence_id", IntegerType(), True),
 ])
 
 OMOP_CONDITION_OCCURRENCE_SCHEMA = StructType([
@@ -113,7 +142,7 @@ OMOP_CONDITION_OCCURRENCE_SCHEMA = StructType([
     StructField("condition_status_concept_id", IntegerType(), True),
     StructField("stop_reason", StringType(), True),
     StructField("provider_id", LongType(), True),
-    StructField("visit_occurrence_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
     StructField("visit_detail_id", IntegerType(), True),
     StructField("condition_source_value", StringType(), True),
     StructField("condition_source_concept_id", IntegerType(), True),
@@ -138,7 +167,7 @@ OMOP_DRUG_EXPOSURE_SCHEMA = StructType([
     StructField("route_concept_id", IntegerType(), True),
     StructField("lot_number", StringType(), True),
     StructField("provider_id", LongType(), True),
-    StructField("visit_occurrence_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
     StructField("visit_detail_id", IntegerType(), True),
     StructField("drug_source_value", StringType(), True),
     StructField("drug_source_concept_id", IntegerType(), True),
@@ -158,7 +187,7 @@ OMOP_PROCEDURE_OCCURRENCE_SCHEMA = StructType([
     StructField("modifier_concept_id", IntegerType(), True),
     StructField("quantity", IntegerType(), True),
     StructField("provider_id", LongType(), True),
-    StructField("visit_occurrence_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
     StructField("visit_detail_id", IntegerType(), True),
     StructField("procedure_source_value", StringType(), True),
     StructField("procedure_source_concept_id", IntegerType(), True),
@@ -178,7 +207,7 @@ OMOP_OBSERVATION_SCHEMA = StructType([
     StructField("qualifier_concept_id", IntegerType(), True),
     StructField("unit_concept_id", IntegerType(), True),
     StructField("provider_id", LongType(), True),
-    StructField("visit_occurrence_id", LongType(), True),
+    StructField("visit_occurrence_id", IntegerType(), True),
     StructField("visit_detail_id", IntegerType(), True),
     StructField("observation_source_value", StringType(), True),
     StructField("observation_source_concept_id", IntegerType(), True),
@@ -189,6 +218,47 @@ OMOP_OBSERVATION_SCHEMA = StructType([
     StructField("obs_event_field_concept_id", IntegerType(), True),
 ])
 
-# TODO: add visit occurrence supplement schema
+PMBB_VISIT_OCCURRENCE_SUPPLEMENT_SCHEMA = StructType([
+    StructField("visit_occurrence_id", IntegerType(), False),
+    StructField("visit_source_value", StringType(), False),
+    StructField("base_class", StringType(), True),
+    StructField("encounter_type", StringType(), True),
+    StructField("IsCancel", IntegerType(), True),
+    StructField("IsHospitalAdmission", IntegerType(), True),
+    StructField("IsInpatientAdmission", IntegerType(), True),
+    StructField("IsObservation", IntegerType(), True),
+    StructField("IsEdVisit", IntegerType(), True),
+    StructField("IsOutpatientFaceToFaceVisit", IntegerType(), True),
+    StructField("IsVideoVisit", IntegerType(), True),
+])
 
-# TODO: add MEDS schemas
+# add MEDS events schema
+MEDS_EVENT_SCHEMA = StructType([
+    StructField("patient_id", StringType(), False),
+    StructField("code", IntegerType(), False),
+    StructField("time", TimestampType(), False),
+    StructField("event_type", StringType(), False),
+    StructField("end", TimestampType(), True),
+    StructField("numeric_value", DoubleType(), True),
+    StructField("unit", StringType(), True),
+    StructField("text_value", StringType(), True),
+    StructField("visit_id", IntegerType(), True)
+])
+
+# add meds concept schema
+MEDS_CONCEPT_SCHEMA = StructType([
+    StructField("code", IntegerType(), False),
+    StructField("name", StringType(), False),
+    StructField(
+        "ancestors",
+        ArrayType(StructType([
+            StructField("ancestor_concept_id", IntegerType(), False),
+            StructField("min_levels_of_separation", IntegerType(), False)
+        ]))
+    ),
+    StructField("factors", ArrayType(IntegerType()))
+])
+
+# TODO: add meds split schema
+
+# TODO: add meds task schema(s)

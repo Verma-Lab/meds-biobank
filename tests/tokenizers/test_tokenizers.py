@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from meds_biobank.ontologies.ontologies import Ontology
 from meds_biobank.tokenizers.tokenizers import BaseTokenizer
+from meds_biobank import schemas
 import random
 import pyspark.sql.functions as F
 
@@ -15,7 +16,7 @@ def meds_events(spark):
     REPO_ROOT = Path(__file__).resolve().parents[2]
     MEDS_DATA_DIR = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     meds_events_path = MEDS_DATA_DIR / "meds_events.parquet"
-    return spark.read.parquet(str(meds_events_path))
+    return spark.read.parquet(str(meds_events_path), schema=schemas.MEDS_EVENT_SCHEMA)
 
 @pytest.fixture(scope="session")
 def ontology(spark):
@@ -70,3 +71,5 @@ def test_base_tokenizer(meds_events, ontology):
     # TODO: test that all requested ontology symbols are in the tokenizer symbol fields
 
     # TODO: what happens when qualifiers are requested but there are no qualifiers?
+
+# TODO: test schemas

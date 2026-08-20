@@ -2061,13 +2061,10 @@ if __name__ == "__main__":
     concept_path = OMOP_DATA_DIR / "concept.csv"
     concept_ancestor_path = OMOP_DATA_DIR / "concept_ancestor.csv"
 
-    # set read schemas
-    measurement_schema = schemas.OMOP_MEASUREMENT_SCHEMA
-
     # read measurements and metadata
-    msmt = spark.read.csv(str(msmt_path), schema=measurement_schema, header=True)
-    concept = spark.read.csv(str(concept_path), header=True, inferSchema=True)
-    concept_ancestor = spark.read.csv(str(concept_ancestor_path), header=True, inferSchema=True)
+    msmt = spark.read.csv(str(msmt_path), schema=schemas.OMOP_MEASUREMENT_SCHEMA, header=True)
+    concept = spark.read.csv(str(concept_path), schema=schemas.OMOP_CONCEPT_SCHEMA, header=True)
+    concept_ancestor = spark.read.csv(str(concept_ancestor_path), schema=schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, header=True)
 
     # standardize measurements
     std_msmt = standardize(msmt, concept, concept_ancestor)

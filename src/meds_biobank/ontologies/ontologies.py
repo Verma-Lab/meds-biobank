@@ -314,6 +314,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
     from pathlib import Path
     import os
+    from meds_biobank import schemas
 
     # init spark session
     spark = (
@@ -330,8 +331,8 @@ if __name__ == "__main__":
     meds_data_dir = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard"
     events_path = meds_data_dir / "meds_events.parquet"
     concept_schema_path = meds_data_dir / "meds_concept_schema.parquet"
-    events = spark.read.parquet(str(events_path))
-    concept_schema = spark.read.parquet(str(concept_schema_path))
+    events = spark.read.parquet(str(events_path), schema=schemas.MEDS_EVENT_SCHEMA)
+    concept_schema = spark.read.parquet(str(concept_schema_path), schema=schemas.MEDS_CONCEPT_SCHEMA)
 
     # set dirname
     ontology_data_dir = REPO_ROOT / os.environ["ONTOLOGY_DATA_DIR"] / "generated-standard-rolled"

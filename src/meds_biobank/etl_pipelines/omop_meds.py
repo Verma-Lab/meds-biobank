@@ -195,7 +195,7 @@ def extract_events(df, table, measurements_prestandardized=True):
     # observation table
     elif table == "observation":
 
-        # TODO: handle value as concept id
+        # TODO: handle value as concept id (create new event)
 
         # get observation events
         events = (
@@ -522,7 +522,7 @@ if __name__ == "__main__":
     # set data dir
     load_dotenv()
     REPO_ROOT = Path(__file__).resolve().parents[3]
-    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "genrated-standard"
+    data_dir = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "generated-standard"
 
     # read concept and concept ancestor dataframes
     concept = spark.read.csv(str(data_dir / "concept.csv"), schema=schemas.OMOP_CONCEPT_SCHEMA, header=True)
@@ -537,10 +537,10 @@ if __name__ == "__main__":
         spark.read.csv(str(data_dir / "condition_occurrence.csv"), schema=schemas.OMOP_CONDITION_OCCURRENCE_SCHEMA, header=True),
         spark.read.csv(str(data_dir / "death.csv"), schema=schemas.OMOP_DEATH_SCHEMA, header=True),
         spark.read.csv(str(data_dir / "drug_exposure.csv"), schema=schemas.OMOP_DRUG_EXPOSURE_SCHEMA, header=True),
-        spark.read.csv(str(data_dir / "observation.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "person.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "procedure_occurrence.csv"), header=True, inferSchema=True),
-        spark.read.csv(str(data_dir / "visit_occurrence.csv"), header=True, inferSchema=True),
+        spark.read.csv(str(data_dir / "observation.csv"), schema=schemas.OMOP_OBSERVATION_SCHEMA, header=True),
+        spark.read.csv(str(data_dir / "person.csv"), schema=schemas.OMOP_PERSON_SCHEMA, header=True),
+        spark.read.csv(str(data_dir / "procedure_occurrence.csv"), schema=schemas.OMOP_PROCEDURE_OCCURRENCE_SCHEMA, header=True),
+        spark.read.csv(str(data_dir / "visit_occurrence.csv"), schema=schemas.OMOP_VISIT_OCCURRENCE_SCHEMA, header=True),
         std_measurement
     ]
 
@@ -575,5 +575,5 @@ if __name__ == "__main__":
     events_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard" / "meds_events.parquet"
     formatted_events.write.mode('overwrite').parquet(str(events_write_path))
     
-    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "genreated-standard" / "meds_concept_schema.parquet"
+    schema_write_path = REPO_ROOT / os.environ["MEDS_DATA_DIR"] / "generated-standard" / "meds_concept_schema.parquet"
     concept_schema.write.mode('overwrite').parquet(str(schema_write_path))
