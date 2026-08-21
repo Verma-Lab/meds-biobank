@@ -110,11 +110,12 @@ GROUPINGS = [
 def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
     """
     Apply GROUPINGS (the per-domain ancestor/concept matching that standardize() encodes)
-    to relabel measurement_concept_id to each grouping's standardized concept id.
+    to compute each measurement's standardized concept id.
 
-    For every grouping, select the matching rows, copy them, and overwrite
-    measurement_concept_id with the grouping's std_concept_id. Union all grouping copies
-    together, then union back in the measurements that matched no grouping, unchanged.
+    For every grouping, select the matching rows, copy them, and add concept_id_std set to
+    the grouping's std_concept_id. Union all grouping copies together, then union back in
+    the measurements that matched no grouping with concept_id_std set to their own
+    (unchanged) measurement_concept_id.
 
     Args:
         measurement (pyspark.sql.DataFrame): OMOP measurement table
@@ -122,10 +123,11 @@ def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
         concept_ancestor (pyspark.sql.DataFrame): OMOP concept_ancestor table
 
     Returns:
-        pyspark.sql.DataFrame: measurement, with measurement_concept_id relabeled for
-            every row that matched a grouping. Same columns as measurement. A row that
-            matches more than one grouping appears once per match, same as standardize()'s
-            per-domain unions do today.
+        pyspark.sql.DataFrame: measurement, plus a new concept_id_std column holding the
+            standardized concept id for every row (grouping's std_concept_id for a match,
+            or the original measurement_concept_id otherwise). measurement_concept_id
+            itself is untouched. A row that matches more than one grouping appears once
+            per match, same as standardize()'s per-domain unions do today.
     """
 
     # type guards
@@ -159,8 +161,8 @@ def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
         base
         .filter(predicate())
         .dropDuplicates(["measurement_id"])
-        .withColumn("measurement_concept_id", F.lit(std_concept_id))
-        .select(*measurement_cols)
+        .withColumn("concept_id_std", F.lit(std_concept_id))
+        .select(*measurement_cols, "concept_id_std")
         for _, predicate, std_concept_id in GROUPINGS
     ]
 
@@ -169,16 +171,16 @@ def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
     for frame in grouped_frames[1:]:
         covered = covered.unionByName(frame)
 
-    # measurements that matched no grouping pass through unchanged
+    # measurements that matched no grouping pass through
     uncovered = measurement.join(
         covered.select("measurement_id").distinct(),
         on="measurement_id",
         how="left_anti"
-    )
+    ).withColumn("concept_id_std", F.col("measurement_concept_id"))
 
     return covered.unionByName(uncovered)
 
-def standardize_numeric_values_and_units(measurement):
+def standardize_numeric_values_and_units(measurement, mcid_standardized=True):
     """
     Apply unit/value homogenization (or nullification) to measurements by measurement_concept_id.
 
@@ -188,19 +190,20 @@ def standardize_numeric_values_and_units(measurement):
         concept_ancestor (pyspark.sql.DataFrame): OMOP concept_ancestor table
 
     Returns:
-        pyspark.sql.DataFrame: measurement, with value_as_number/unit_source_value
-            homogenized to each measurement_concept_id's modal unit where possible
+        pyspark.sql.DataFrame: measurement, plus new numeric_value_std/unit_std columns
+            holding each measurement homogenized to its measurement_concept_id's modal
+            unit where possible (null where not). value_as_number/unit_source_value
+            themselves are untouched.
     """
 
     # type guard
     if not isinstance(measurement, DataFrame):
         raise ValueError
-
-    # schema guard
-    try:
-        assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA)
-    except:
-        raise ValueError()
+    
+    if mcid_standardized:
+        cid_col = "concept_id_std"
+    else:
+        cid_col = "measurement_concept_id"
 
     # map units to canonical value
     unit_lower = F.lower(F.col("unit_source_value"))
@@ -317,13 +320,13 @@ def standardize_numeric_values_and_units(measurement):
     factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
 
     # compute the target unit for each row of measurements
-    pair_w = Window.partitionBy("measurement_concept_id", "unit_norm")
+    pair_w = Window.partitionBy(cid_col, "unit_norm")
     df = df.withColumn("pair_count", F.count("*").over(pair_w))
 
     # tiebreak on unit_norm itself so the mode pick is deterministic when two units are equally common
-    rank_w = Window.partitionBy("measurement_concept_id").orderBy(F.desc("pair_count"), F.col("unit_norm"))
+    rank_w = Window.partitionBy(cid_col).orderBy(F.desc("pair_count"), F.col("unit_norm"))
     df = df.withColumn("unit_rank", F.row_number().over(rank_w))
-    mode_w = Window.partitionBy("measurement_concept_id")
+    mode_w = Window.partitionBy(cid_col)
     df = df.withColumn(
         "target_unit",
         F.min(F.when(F.col("unit_rank") == 1, F.col("unit_norm"))).over(mode_w)
@@ -346,11 +349,12 @@ def standardize_numeric_values_and_units(measurement):
         F.when(success, F.col("target_unit"))
     )
 
-    # write the standardized value/unit back into the real OMOP fields
-    df = df.withColumn("value_as_number", F.col("value_std"))
-    df = df.withColumn("unit_source_value", F.col("unit_std"))
+    # rename the standardized value to its final column name; unit_std is already named
+    # correctly. Neither collides with an existing column, since value_as_number/
+    # unit_source_value are left untouched -- these are new columns, not overwrites.
+    df = df.withColumnRenamed("value_std", "numeric_value_std")
 
-    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to", "unit_norm", "target_unit", "value_std", "unit_std")
+    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to", "unit_norm", "target_unit")
 
 def standardize_text_value(measurement):
     """
@@ -363,9 +367,10 @@ def standardize_text_value(measurement):
         measurement (pyspark.sql.DataFrame): OMOP measurement table
 
     Returns:
-        pyspark.sql.DataFrame: measurement, with value_source_value cleaned for every row
-            that doesn't already have a parseable numeric value. Rows with a parseable
-            numeric value (or a null value_source_value) pass through unchanged.
+        pyspark.sql.DataFrame: measurement, plus a new text_value_std column: the cleaned
+            value_source_value for every row that doesn't have a parseable numeric value,
+            and null for rows that do (or have a null value_source_value).
+            value_source_value itself is untouched.
     """
     # text-valued rows
     has_text_value = measurement.filter(
@@ -375,14 +380,14 @@ def standardize_text_value(measurement):
 
     # collapse internal whitespace runs to a single space, then trim the leading/trailing space that leaves behind, then lowercase
     cleaned_value = F.lower(F.trim(F.regexp_replace(F.col("value_source_value"), r"\s+", " ")))
-    text_cleaned = has_text_value.withColumn("value_source_value", cleaned_value)
+    text_cleaned = has_text_value.withColumn("text_value_std", cleaned_value)
 
-    # numeric-valued and null-valued rows pass through untouched
+    # numeric-valued and null-valued rows get a null text_value_std
     not_text_value = measurement.join(
         has_text_value.select("measurement_id").distinct(),
         on="measurement_id",
         how="left_anti"
-    )
+    ).withColumn("text_value_std", F.lit(None).cast("string"))
 
     return text_cleaned.unionByName(not_text_value)
 
@@ -2234,24 +2239,23 @@ def lv_standardize(msmt, concept, concept_ancestor):
     )
     all_frames.append(vitals_weight)
 
-    # union all labs/vitals frames, pared to the input measurement schema + std_concept_id/value_converted/unit_converted
+    # union all labs/vitals frames
     OUTPUT_COLUMNS = [
-        *schemas.STD_OMOP_MEASUREMENT_SCHEMA.fieldNames(),
+        *schemas.OMOP_MEASUREMENT_SCHEMA.fieldNames(),
+        "std_concept_id", "value_converted", "unit_converted",
     ]
     all_frames = [df.select(*[c for c in OUTPUT_COLUMNS if c in df.columns]) for df in all_frames]
     labs_vitals_union = all_frames[0]
     for frame in all_frames[1:]:
         labs_vitals_union = labs_vitals_union.unionByName(frame, allowMissingColumns=True)
 
-    # write the standardized concept id/value/unit back into the real OMOP fields, then
-    # drop the custom columns -- output conforms to plain OMOP_MEASUREMENT_SCHEMA, not
-    # STD_OMOP_MEASUREMENT_SCHEMA's separate std_concept_id/value_converted/unit_converted
+    # write the standardized concept id/value/unit into new columns
     labs_vitals_union = (
         labs_vitals_union
-        .withColumn("measurement_concept_id", F.col("std_concept_id"))
-        .withColumn("value_as_number", F.col("value_converted").cast("double"))
-        .withColumn("unit_source_value", F.col("unit_converted"))
-        .select(*schemas.OMOP_MEASUREMENT_SCHEMA.fieldNames())
+        .withColumn("concept_id_std", F.col("std_concept_id"))
+        .withColumn("numeric_value_std", F.col("value_converted").cast("double"))
+        .withColumn("unit_std", F.col("unit_converted"))
+        .select(*schemas.OMOP_MEASUREMENT_SCHEMA.fieldNames(), "concept_id_std", "numeric_value_std", "unit_std")
     )
 
     # perform fallback logic for all unmapped measurements (for now, null all values)
@@ -2262,44 +2266,11 @@ def lv_standardize(msmt, concept, concept_ancestor):
     )
 
     # perform fallback logic for all other measurement types
-    fallback_msmt = standardize_numeric_values_and_units(unmapped_msmt)
+    fallback_msmt = standardize_numeric_values_and_units(unmapped_msmt, mcid_standardized=False).withColumn(
+        "concept_id_std", F.col("measurement_concept_id")
+    )
 
     # union all data frames and return
     final_msmt = labs_vitals_union.unionByName(fallback_msmt, allowMissingColumns=True)
 
     return final_msmt
-
-if __name__ == "__main__":
-
-    # perform imports
-    from pyspark.sql import SparkSession
-    from pathlib import Path
-    from dotenv import load_dotenv
-    import os
-    from meds_biobank import schemas
-
-    # create spark session
-    spark = (
-        SparkSession
-        .builder
-        .master("local[2]")
-        .appName("meds-standardizers")
-        .config("spark.sql.shuffle.partitions", "2")
-        .getOrCreate()
-    )
-
-    # register data paths
-    load_dotenv()
-    REPO_ROOT = Path(__file__).resolve().parents[3]
-    OMOP_DATA_DIR = REPO_ROOT / os.environ["OMOP_DATA_DIR"] / "generated-standard"
-    msmt_path = OMOP_DATA_DIR / "measurement.csv"
-    concept_path = OMOP_DATA_DIR / "concept.csv"
-    concept_ancestor_path = OMOP_DATA_DIR / "concept_ancestor.csv"
-
-    # read measurements and metadata
-    msmt = spark.read.csv(str(msmt_path), schema=schemas.OMOP_MEASUREMENT_SCHEMA, header=True)
-    concept = spark.read.csv(str(concept_path), schema=schemas.OMOP_CONCEPT_SCHEMA, header=True)
-    concept_ancestor = spark.read.csv(str(concept_ancestor_path), schema=schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, header=True)
-
-    # standardize measurements
-    std_msmt = lv_standardize(msmt, concept, concept_ancestor)

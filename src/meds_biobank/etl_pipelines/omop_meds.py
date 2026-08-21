@@ -217,17 +217,30 @@ def extract_events(df, table):
         # dedup
         events = events.dropDuplicates(["measurement_id"])
 
-        # get measurement events
-        events = (
-            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-            .withColumn("concept_id", F.col("measurement_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
-            .withColumn("event_type", F.lit("measurement"))
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("unit", F.col("unit_source_value"))
-            .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
-        )
+        if "concept_id_std" in {field.name for field in table.schema}:
+            # get measurement events, standardized path
+            events = (
+                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+                .withColumn("concept_id", F.col("concept_id_std"))
+                .filter(F.col("concept_id") != 0)
+                .withColumn("value", F.coalesce(F.col("numeric_value_std").cast("string"), F.col("text_value_std"))) # basically either a float or smthg like "negative" or "-", etc.
+                .withColumn("event_type", F.lit("measurement"))
+                .withColumn("visit_id", F.col("visit_occurrence_id"))
+                .withColumn("unit", F.col("unit_source_value"))
+                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
+            )
+        else:
+            # get measurement events, unstandardized path
+            events = (
+                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+                .withColumn("concept_id", F.col("measurement_concept_id"))
+                .filter(F.col("concept_id") != 0)
+                .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
+                .withColumn("event_type", F.lit("measurement"))
+                .withColumn("visit_id", F.col("visit_occurrence_id"))
+                .withColumn("unit", F.col("unit_source_value"))
+                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
+            )
 
     # undefined table
     else:

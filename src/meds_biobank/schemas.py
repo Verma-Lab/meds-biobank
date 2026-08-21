@@ -74,9 +74,10 @@ STD_OMOP_MEASUREMENT_SCHEMA = StructType([
     StructField("unit_source_concept_id", IntegerType(), True),
     StructField("value_source_value", StringType(), True),
     StructField("meas_event_field_concept_id", IntegerType(), True),
-    StructField("value_converted", StringType(), True),
-    StructField("unit_converted", StringType(), True),
-    StructField("std_concept_id", IntegerType(), False),
+    StructField("numeric_value_std", DoubleType(), True),
+    StructField("unit_std", StringType(), True),
+    StructField("text_value_std", StringType(), True),
+    StructField("concept_id_std", IntegerType(), False),
 ])
 
 OMOP_PERSON_SCHEMA = StructType([
