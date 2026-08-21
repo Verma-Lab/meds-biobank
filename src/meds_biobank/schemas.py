@@ -234,7 +234,7 @@ PMBB_VISIT_OCCURRENCE_SUPPLEMENT_SCHEMA = StructType([
 
 # add MEDS events schema
 MEDS_EVENT_SCHEMA = StructType([
-    StructField("patient_id", StringType(), False),
+    StructField("patient_id", LongType(), False),
     StructField("code", IntegerType(), False),
     StructField("time", TimestampType(), False),
     StructField("event_type", StringType(), False),

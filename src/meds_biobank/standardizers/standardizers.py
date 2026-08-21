@@ -1,48 +1,419 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 from pyspark.sql import functions as F, Window
+from meds_biobank import schemas
+from pyspark.sql import DataFrame
+from pyspark.testing import assertSchemaEqual
 
-def standardize(msmt, concept, concept_ancestor):
+# (label, predicate_fn, std_concept_id)
+GROUPINGS = [
+    ("labs_alt", lambda: F.col("ancestor_concept_id") == 40652525, 40652525),
+    ("labs_albumin", lambda: F.col("ancestor_concept_id") == 40652534, 40652534),
+    ("labs_alp", lambda: F.col("ancestor_concept_id") == 40652549, 40652549),
+    ("labs_anion_gap", lambda: F.col("ancestor_concept_id") == 40652611, 40652611),
+    ("labs_apo_b", lambda: F.col("ancestor_concept_id") == 40652616, 40652616),
+    ("labs_amh", lambda: F.col("ancestor_concept_id") == 40653357, 40653357),
+    ("labs_ast", lambda: F.col("ancestor_concept_id") == 40652640, 40652640),
+    ("labs_basophils", lambda: F.col("ancestor_concept_id") == 40653984, 40653984),
+    ("labs_beta_globulin", lambda: F.col("ancestor_concept_id") == 1990626, 1990626),
+    ("labs_bilirubin_total", lambda: F.col("ancestor_concept_id") == 40652709, 40652709),
+    ("labs_bun", lambda: F.col("ancestor_concept_id") == 40653900, 40653900),
+    ("labs_crp", lambda: (F.col("ancestor_concept_id") == 40652733) | (F.col("measurement_concept_id") == 3020460), 40652733),
+    ("labs_crp_hs", lambda: F.col("ancestor_concept_id") == 40654479, 40654479),
+    ("labs_calcium", lambda: F.col("ancestor_concept_id") == 40652745, 40652745),
+    ("labs_chloride", lambda: F.col("ancestor_concept_id") == 40652796, 40652796),
+    ("labs_chol_hdl", lambda: F.col("ancestor_concept_id") == 40652802, 40652802),
+    ("labs_chol_ldl", lambda: F.col("ancestor_concept_id") == 40654572, 40654572),
+    ("labs_chol_vldl", lambda: (F.col("ancestor_concept_id") == 40654576) | (F.col("measurement_concept_id") == 3009596), 40654576),
+    ("labs_chol_total", lambda: F.col("ancestor_concept_id") == 40652808, 40652808),
+    ("labs_c4", lambda: F.col("ancestor_concept_id") == 40654637, 40654637),
+    ("labs_covid", lambda: F.col("ancestor_concept_id") == 36662633, 36662633),
+    ("labs_ck", lambda: F.col("ancestor_concept_id") == 40652867, 40652867),
+    ("labs_creatinine", lambda: F.col("ancestor_concept_id") == 40652870, 40652870),
+    ("labs_creatinine_urine", lambda: F.col("ancestor_concept_id") == 40656057, 40656057),
+    ("labs_ccpab", lambda: F.col("ancestor_concept_id") == 40652885, 40652885),
+    ("labs_eosinophils", lambda: F.col("ancestor_concept_id") == 40653994, 40653994),
+    ("labs_rbc", lambda: F.col("ancestor_concept_id") == 40654005, 40654005),
+    ("labs_rbc_urine", lambda: F.col("ancestor_concept_id") == 40657685, 40657685),
+    ("labs_esr", lambda: (F.col("ancestor_concept_id") == 4028908)
+        & F.lower(F.col("concept_name")).like("%eryth%")
+        & F.lower(F.col("concept_name")).like("%sed%"), 3015183),
+    ("labs_ggt", lambda: F.lower(F.col("concept_name")).like("%glutamyl%transferase%"), 2212371),
+    ("labs_ferritin", lambda: F.col("ancestor_concept_id") == 40652982, 40652982),
+    ("labs_folate", lambda: F.col("ancestor_concept_id") == 40652995, 40652995),
+    ("labs_glucose", lambda: (F.col("ancestor_concept_id") == 40653085)
+        & (~F.col("value_source_value").like("%,%")), 40653085),
+    ("labs_glucose_fasting", lambda: F.col("measurement_source_concept_id") == 3037110, 3037110),
+    ("labs_glucose_urine", lambda: F.col("ancestor_concept_id") == 40657691, 40657691),
+    ("labs_granulocytes", lambda: F.col("ancestor_concept_id") == 40654016, 40654016),
+    ("labs_hemoglobin", lambda: F.col("ancestor_concept_id") == 40654905, 40654905),
+    ("labs_hba1c", lambda: F.col("ancestor_concept_id") == 1621295, 1621295),
+    ("labs_iga", lambda: F.col("ancestor_concept_id") == 40653141, 40653141),
+    ("labs_igg", lambda: F.col("ancestor_concept_id") == 40653151, 40653151),
+    ("labs_igm", lambda: F.col("ancestor_concept_id") == 40653158, 40653158),
+    ("labs_inr", lambda: F.lower(F.col("concept_name")).rlike(r'.*\binr\b.*'), 85610),
+    ("labs_iron", lambda: F.col("ancestor_concept_id") == 40654984, 40654984),
+    ("labs_ketones", lambda: (F.col("ancestor_concept_id") == 40656264) | (F.col("measurement_source_value") == "5797-6"), 40656264),
+    ("labs_leukocyte_esterase", lambda: F.col("ancestor_concept_id") == 40657703, 40657703),
+    ("labs_wbc", lambda: F.col("ancestor_concept_id") == 40654026, 40654026),
+    ("labs_wbc_urine", lambda: F.col("ancestor_concept_id") == 40657704, 40657704),
+    ("labs_lipoprotein_a", lambda: F.col("ancestor_concept_id") == 40655033, 40655033),
+    ("labs_lymphocytes", lambda: F.col("ancestor_concept_id") == 40654045, 40654045),
+    ("labs_magnesium", lambda: F.col("ancestor_concept_id") == 40653291, 40653291),
+    ("labs_metamyelocytes", lambda: (F.col("ancestor_concept_id") == 40654064)
+        | (F.col("measurement_concept_id").isin(3012392, 3024507)), 40654064),
+    ("labs_metanephrine", lambda: F.col("ancestor_concept_id") == 40655090, 40655090),
+    ("labs_microalbumin", lambda: F.col("ancestor_concept_id") == 40656529, 40656529),
+    ("labs_microalbumin_creatinine_ratio", lambda: F.col("ancestor_concept_id") == 40656531, 40656531),
+    ("labs_monocytes", lambda: F.col("ancestor_concept_id") == 40654069, 40654069),
+    ("labs_neutrophils", lambda: F.col("ancestor_concept_id") == 40654088, 40654088),
+    ("labs_neutrophils_bandform", lambda: (F.col("ancestor_concept_id") == 40654083)
+        | (F.col("measurement_concept_id").isin(3008939, 3018199)), 40654083),
+    ("labs_neutrophils_segmented", lambda: (F.col("ancestor_concept_id") == 40654086)
+        | (F.col("measurement_concept_id").isin(3027270, 3015586)), 40654086),
+    ("labs_normetanephrine", lambda: F.col("ancestor_concept_id") == 40655204, 40655204),
+    ("labs_ptt", lambda: F.lower(F.col("concept_name")).like("%ptt%")
+        & F.col("ancestor_concept_id").isin(1618784, 2212742), 2212742),
+    ("labs_phosphate", lambda: F.col("ancestor_concept_id") == 40653550, 40653550),
+    ("labs_platelets", lambda: F.col("ancestor_concept_id") == 40654106, 40654106),
+    ("labs_potassium", lambda: F.col("ancestor_concept_id") == 40653596, 40653596),
+    ("labs_prealbumin", lambda: F.col("ancestor_concept_id") == 40653598, 40653598),
+    ("labs_promyelocytes", lambda: (F.col("ancestor_concept_id") == 40654115)
+        | (F.col("measurement_concept_id").isin(3022709, 3024153)), 40654115),
+    ("labs_protein", lambda: F.col("ancestor_concept_id") == 40653626, 40653626),
+    ("labs_protein_urine", lambda: (F.col("ancestor_concept_id") == 40657714)
+        | (F.col("measurement_concept_id").isin(3005897, 3035511, 3014051, 3037121, 40760845)), 40657714),
+    ("labs_pt", lambda: F.col("measurement_concept_id").isin(3034426, 2212731), 3034426),
+    ("labs_rf", lambda: (F.col("ancestor_concept_id") == 40653663)
+        | (F.col("measurement_concept_id").isin(3021614, 3015688, 3024763)), 40653663),
+    ("labs_shbg", lambda: F.col("ancestor_concept_id") == 40655429, 40655429),
+    ("labs_sodium", lambda: F.col("ancestor_concept_id") == 40653762, 40653762),
+    ("labs_testosterone_free", lambda: F.col("ancestor_concept_id") == 40653808, 40653808),
+    ("labs_tsh", lambda: F.col("ancestor_concept_id") == 40653836, 40653836),
+    ("labs_transferrin", lambda: F.col("ancestor_concept_id") == 1990650, 1990650),
+    ("labs_triglycerides", lambda: F.col("ancestor_concept_id") == 40653862, 40653862),
+    ("labs_troponin_i", lambda: F.col("ancestor_concept_id") == 40653873, 40653873),
+    ("labs_troponin_t", lambda: F.col("ancestor_concept_id") == 40653874, 40653874),
+    ("labs_urobilinogen", lambda: F.col("ancestor_concept_id") == 40656506, 40656506),
+    ("vitals_bp_diastolic", lambda: F.col("measurement_concept_id") == 3012888, 3012888),
+    ("vitals_bp_systolic", lambda: F.col("measurement_concept_id") == 3004249, 3004249),
+    ("vitals_bmi", lambda: F.col("measurement_concept_id").isin(44783982, 4245997), 44783982),
+    ("vitals_height", lambda: F.col("ancestor_concept_id") == 40655804, 40655804),
+    ("vitals_o2sat", lambda: F.col("ancestor_concept_id") == 40654168, 40654168),
+    ("vitals_pulse", lambda: F.col("ancestor_concept_id") == 40654164, 40654164),
+    ("vitals_resp_rate", lambda: F.col("ancestor_concept_id") == 40654163, 40654163),
+    ("vitals_temperature", lambda: F.col("ancestor_concept_id") == 40654162, 40654162),
+    ("vitals_weight", lambda: F.col("ancestor_concept_id") == 40655805, 40655805),
+]
+
+
+def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
+    """
+    Apply GROUPINGS (the per-domain ancestor/concept matching that standardize() encodes)
+    to relabel measurement_concept_id to each grouping's standardized concept id.
+
+    For every grouping, select the matching rows, copy them, and overwrite
+    measurement_concept_id with the grouping's std_concept_id. Union all grouping copies
+    together, then union back in the measurements that matched no grouping, unchanged.
+
+    Args:
+        measurement (pyspark.sql.DataFrame): OMOP measurement table
+        concept (pyspark.sql.DataFrame): OMOP concept table
+        concept_ancestor (pyspark.sql.DataFrame): OMOP concept_ancestor table
+
+    Returns:
+        pyspark.sql.DataFrame: measurement, with measurement_concept_id relabeled for
+            every row that matched a grouping. Same columns as measurement. A row that
+            matches more than one grouping appears once per match, same as standardize()'s
+            per-domain unions do today.
+    """
+
+    # type guards
+    if not isinstance(measurement, DataFrame):
+        raise ValueError()
+    if not isinstance(concept, DataFrame):
+        raise ValueError()
+    if not isinstance(concept_ancestor, DataFrame):
+        raise ValueError()
+    
+    # schema guards
+    try:
+        assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
+        assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA, ignoreColumnOrder=True)
+        assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, ignoreColumnOrder=True)
+    except:
+        raise ValueError()
+
+    # build the same joined base the groupings' predicates are written against
+    base = (
+        measurement
+        .join(concept_ancestor, measurement.measurement_concept_id == concept_ancestor.descendant_concept_id, "left")
+        .join(concept, F.col("descendant_concept_id") == concept.concept_id, "left")
+    )
+
+    # get msmt cols
+    measurement_cols = measurement.columns
+
+    # dropDuplicates(["measurement_id"]) guards against the ancestor join's fan-out: a
+    grouped_frames = [
+        base
+        .filter(predicate())
+        .dropDuplicates(["measurement_id"])
+        .withColumn("measurement_concept_id", F.lit(std_concept_id))
+        .select(*measurement_cols)
+        for _, predicate, std_concept_id in GROUPINGS
+    ]
+
+    # union groups
+    covered = grouped_frames[0]
+    for frame in grouped_frames[1:]:
+        covered = covered.unionByName(frame)
+
+    # measurements that matched no grouping pass through unchanged
+    uncovered = measurement.join(
+        covered.select("measurement_id").distinct(),
+        on="measurement_id",
+        how="left_anti"
+    )
+
+    return covered.unionByName(uncovered)
+
+def standardize_numeric_values_and_units(measurement):
+    """
+    Apply unit/value homogenization (or nullification) to measurements by measurement_concept_id.
+
+    Args:
+        measurement (pyspark.sql.DataFrame): OMOP measurement table
+        concept (pyspark.sql.DataFrame): OMOP concept table
+        concept_ancestor (pyspark.sql.DataFrame): OMOP concept_ancestor table
+
+    Returns:
+        pyspark.sql.DataFrame: measurement, with value_as_number/unit_source_value
+            homogenized to each measurement_concept_id's modal unit where possible
+    """
+
+    # type guard
+    if not isinstance(measurement, DataFrame):
+        raise ValueError
+
+    # schema guard
+    try:
+        assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA)
+    except:
+        raise ValueError()
+
+    # map units to canonical value
+    unit_lower = F.lower(F.col("unit_source_value"))
+    normalized_unit = (
+        # mass-concentration ladder: mg/dL <-> g/dL <-> g/L <-> mg/L <-> mg/mL
+        F.when(unit_lower.rlike(r'^mg/\s?dl$'), F.lit("mg/dL"))
+        .when(unit_lower.rlike(r'^gm?/dl(\s*\(calc\))?$'), F.lit("g/dL"))
+        .when(unit_lower == "g/l", F.lit("g/L"))
+        .when(unit_lower == "mg/l", F.lit("mg/L"))
+        .when(unit_lower == "mg/ml", F.lit("mg/mL"))
+        # hormone/protein ladder: pg/mL <-> ng/L <-> ng/dL <-> ng/mL
+        .when(unit_lower == "pg/ml", F.lit("pg/mL"))
+        .when(unit_lower == "ng/l", F.lit("ng/L"))
+        .when(unit_lower == "ng/dl", F.lit("ng/dL"))
+        .when(unit_lower == "ng/ml", F.lit("ng/mL"))
+        # microgram ladder: ug/mL <-> ug/dL ("mcg" is a synonym for "ug")
+        .when((unit_lower == "ug/ml") | (unit_lower == "mcg/ml"), F.lit("ug/mL"))
+        .when((unit_lower == "ug/dl") | (unit_lower == "mcg/dl"), F.lit("ug/dL"))
+        .when(unit_lower.like("mcg/mg%"), F.lit("mcg/mg"))
+        # cell-count ladder: Cells/uL <-> Thousand/uL <-> Million/uL
+        .when(
+            unit_lower.like("th%/ul") | unit_lower.like("th%/mcl")
+            | unit_lower.like("%10%3/ul") | unit_lower.like("%10%3/mcl")
+            | unit_lower.rlike(r'^k/[ucm].+$') | unit_lower.rlike(r'^10.3/ul$'),
+            F.lit("Thousand/uL")
+        )
+        .when(unit_lower.rlike(r'^cell.*/[ucm].+$') | (unit_lower == "/ul"), F.lit("Cells/uL"))
+        .when(
+            unit_lower.like("m%/ul") | unit_lower.like("m%/mcl") | unit_lower.like("m%/mm3")
+            | unit_lower.rlike(r'^m.*/cu?mm$') | unit_lower.like("%10%6/ul"),
+            F.lit("Million/uL")
+        )
+        # enzyme/antibody activity units
+        .when(unit_lower == "iu/ml", F.lit("International Units/mL"))
+        .when(
+            unit_lower.rlike(r'^u.?iu.?/ml$') | unit_lower.rlike(r'^mc?i?u.*/l$') | (unit_lower == "mciu/ml"),
+            F.lit("uIU/mL")
+        )
+        .when(unit_lower.rlike(r'^.*i?u.*/l$'), F.lit("Unit/L"))
+        .when(unit_lower == "leu/ul", F.lit("Leu/uL"))
+        # electrolytes / catecholamines
+        .when(unit_lower.like("mmo%/l"), F.lit("mmol/L"))
+        .when(unit_lower == "nmol/l", F.lit("nmol/L"))
+        # misc single-unit families
+        .when(unit_lower == "mmhg", F.lit("mmHg"))
+        .when(unit_lower.like("s%"), F.lit("Second(s)"))
+        .when(F.col("unit_source_value").rlike(r'^%.*$'), F.lit("%"))
+        .when(unit_lower == "counts/min", F.lit("Counts/Min"))
+        .when(unit_lower.like("mm/h%"), F.lit("mm/h"))
+        .when(unit_lower == "kg/m^2", F.lit("kg/m^2"))
+        # anthropometrics (height/weight; temperature intentionally excluded, see note below)
+        .when(unit_lower.like("in%"), F.lit("Inches"))
+        .when(unit_lower == "ft", F.lit("Feet"))
+        .when(unit_lower.like("o%"), F.lit("oz"))
+        .when(unit_lower.like("lb%"), F.lit("lb"))
+        # renal function: eGFR, normalize spacing/suffix variants to one label
+        .when(unit_lower.rlike(r'^ml/min/1\.73\s?m2$') | (unit_lower == "ml/min/1.73"), F.lit("mL/min/1.73m2"))
+        # standalone hematology indices (no ratio partner in this data; identity so repeats don't flag as inconsistent units)
+        .when(unit_lower == "pg", F.lit("pg"))
+        .when(unit_lower == "fl", F.lit("fL"))
+        .when(unit_lower == "/hpf", F.lit("/hpf"))
+        .otherwise(F.col("unit_source_value"))
+    )
+
+    # normalize unit
+    df = measurement.withColumn("unit_norm", normalized_unit)
+
+    # perform value conversion to measurement concept mode unit where possible, drop if not possible
+    unit_to_canonical = {
+        # mass-concentration ladder, relative to mg/dL
+        "mg/dL": 1.0,
+        "g/dL": 1000.0,
+        "g/L": 0.01,
+        "mg/L": 0.1,
+        "mg/mL": 100.0,
+        # hormone/protein ladder, relative to pg/mL
+        "pg/mL": 1.0,
+        "ng/L": 1.0,
+        "ng/dL": 10.0,
+        "ng/mL": 1000.0,
+        # microgram ladder, relative to ug/mL
+        "ug/mL": 1.0,
+        "ug/dL": 0.01,
+        # cell-count ladder, relative to Cells/uL
+        "Cells/uL": 1.0,
+        "Thousand/uL": 1000.0,
+        "Million/uL": 1000000.0,
+        # anthropometrics
+        "Inches": 1.0,
+        "Feet": 12.0,
+        "oz": 1.0,
+        "lb": 16.0,
+        # single-unit families: identity, kept so same-unit pairs still resolve via the lookup
+        "Unit/L": 1.0,
+        "International Units/mL": 1.0,
+        "uIU/mL": 1.0,
+        "Leu/uL": 1.0,
+        "mmol/L": 1.0,
+        "nmol/L": 1.0,
+        "mmHg": 1.0,
+        "Second(s)": 1.0,
+        "%": 1.0,
+        "Counts/Min": 1.0,
+        "mm/h": 1.0,
+        "kg/m^2": 1.0,
+        "mcg/mg": 1.0,
+        "mL/min/1.73m2": 1.0,
+        "pg": 1.0,
+        "fL": 1.0,
+        "/hpf": 1.0,
+    }
+
+    # create map of normalized unit to conversion factor
+    factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
+
+    # compute the target unit for each row of measurements
+    pair_w = Window.partitionBy("measurement_concept_id", "unit_norm")
+    df = df.withColumn("pair_count", F.count("*").over(pair_w))
+
+    # tiebreak on unit_norm itself so the mode pick is deterministic when two units are equally common
+    rank_w = Window.partitionBy("measurement_concept_id").orderBy(F.desc("pair_count"), F.col("unit_norm"))
+    df = df.withColumn("unit_rank", F.row_number().over(rank_w))
+    mode_w = Window.partitionBy("measurement_concept_id")
+    df = df.withColumn(
+        "target_unit",
+        F.min(F.when(F.col("unit_rank") == 1, F.col("unit_norm"))).over(mode_w)
+    )
+
+    # perform unit and value conversion for non-mode units
+    df = df.withColumn("factor_from", factor_map[F.col("unit_norm")])
+    df = df.withColumn("factor_to", factor_map[F.col("target_unit")])
+    already_target = F.col("unit_norm") == F.col("target_unit")
+    convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull()
+    success = already_target | convertible
+    value_num = F.col("value_source_value").try_cast("double")
+    df = df.withColumn(
+        "value_std",
+        F.when(already_target, F.round(value_num, 3))
+         .when(convertible, F.round(value_num * F.col("factor_from") / F.col("factor_to"), 3))
+    )
+    df = df.withColumn(
+        "unit_std",
+        F.when(success, F.col("target_unit"))
+    )
+
+    # write the standardized value/unit back into the real OMOP fields
+    df = df.withColumn("value_as_number", F.col("value_std"))
+    df = df.withColumn("unit_source_value", F.col("unit_std"))
+
+    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to", "unit_norm", "target_unit", "value_std", "unit_std")
+
+def standardize_text_value(measurement):
+    """
+    Apply text value simplification to measurements without parseable numeric values:
+    strip surrounding whitespace, collapse repeated internal whitespace, and lowercase
+    value_source_value so that e.g. "POSITIVE", "  positive", and "Positive  " all
+    normalize to the same "positive".
+
+    Args:
+        measurement (pyspark.sql.DataFrame): OMOP measurement table
+
+    Returns:
+        pyspark.sql.DataFrame: measurement, with value_source_value cleaned for every row
+            that doesn't already have a parseable numeric value. Rows with a parseable
+            numeric value (or a null value_source_value) pass through unchanged.
+    """
+    # text-valued rows
+    has_text_value = measurement.filter(
+        (F.col("value_source_value").isNotNull()) &
+        (F.expr("try_cast(value_source_value AS DOUBLE)").isNull())
+    )
+
+    # collapse internal whitespace runs to a single space, then trim the leading/trailing space that leaves behind, then lowercase
+    cleaned_value = F.lower(F.trim(F.regexp_replace(F.col("value_source_value"), r"\s+", " ")))
+    text_cleaned = has_text_value.withColumn("value_source_value", cleaned_value)
+
+    # numeric-valued and null-valued rows pass through untouched
+    not_text_value = measurement.join(
+        has_text_value.select("measurement_id").distinct(),
+        on="measurement_id",
+        how="left_anti"
+    )
+
+    return text_cleaned.unionByName(not_text_value)
+
+def lv_standardize(msmt, concept, concept_ancestor):
     """
     - For each mtype, filter df and homogenize unit and value
 
     Args:
         msmt (pyspark.sql.DataFrame):
-            Desc: OMOP measurements table
-            Schema:
-                measurement_id:long
-                person_id:string
-                measurement_concept_id:integer
-                measurement_date:date
-                measurement_datetime:timestamp
-                measurement_type_concept_id:integer
-                operator_concept_id:integer
-                value_as_number:decimal(10,3)
-                value_as_concept_id:integer
-                unit_concept_id:integer
-                range_low:decimal(24,3)
-                range_high:decimal(24,3)
-                visit_occurrence_id:long
-                measurement_source_value:string
-                measurement_source_concept_id:integer
-                unit_source_value:string
-                value_source_value:string
         concept_ancestor (pyspark.sql.DataFrame):
-            Desc: ...
-            Schema: ancestor_concept_id|descendant_concept_id|min_levels_of_separation|max_levels_of_separation|
         concept (pyspark.sql.DataFrame):
-            Desc: OMOP concept table
-            Schema: concept_id|concept_name|domain_id|vocabulary_id|concept_class_id|standard_concept|concept_code|valid_start_date|valid_end_date|invalid_reason|
         person (pyspark.sql.DataFrame):
-            Desc: OMOP person table
-            Schema: person_id|gender_concept_id|year_of_birth|month_of_birth|day_of_birth|birth_datetime|race_concept_id|ethnicity_concept_id|location_id|provider_id|care_site_id|person_source_value|gender_source_value|gender_source_concept_id|race_source_value|race_source_concept_id|ethnicity_source_value|ethnicity_source_concept_id|
-
     Returns:
         measurements (pyspark.sql.DataFrame):
-            Desc: OMOP measurements table
     """
 
-    # TODO: map text values?
+    # type guards
+    if not isinstance(msmt, DataFrame):
+        raise ValueError()
+    if not isinstance(concept, DataFrame):
+        raise ValueError()
+    if not isinstance(concept_ancestor, DataFrame):
+        raise ValueError()
+
+    # schema guards
+    try:
+        assertSchemaEqual(msmt.schema, schemas.OMOP_MEASUREMENT_SCHEMA)
+        assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA)
+        assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA)
+    except:
+        raise ValueError()
 
     # init msmts trackers
     all_frames = []
@@ -1865,16 +2236,23 @@ def standardize(msmt, concept, concept_ancestor):
 
     # union all labs/vitals frames, pared to the input measurement schema + std_concept_id/value_converted/unit_converted
     OUTPUT_COLUMNS = [
-        "measurement_id", "person_id", "measurement_concept_id", "measurement_date", "measurement_datetime",
-        "measurement_type_concept_id", "operator_concept_id", "value_as_number", "value_as_concept_id",
-        "unit_concept_id", "range_low", "range_high", "visit_occurrence_id", "measurement_source_value",
-        "measurement_source_concept_id", "unit_source_value", "value_source_value",
-        "std_concept_id", "value_converted", "unit_converted",
+        *schemas.STD_OMOP_MEASUREMENT_SCHEMA.fieldNames(),
     ]
     all_frames = [df.select(*[c for c in OUTPUT_COLUMNS if c in df.columns]) for df in all_frames]
     labs_vitals_union = all_frames[0]
     for frame in all_frames[1:]:
         labs_vitals_union = labs_vitals_union.unionByName(frame, allowMissingColumns=True)
+
+    # write the standardized concept id/value/unit back into the real OMOP fields, then
+    # drop the custom columns -- output conforms to plain OMOP_MEASUREMENT_SCHEMA, not
+    # STD_OMOP_MEASUREMENT_SCHEMA's separate std_concept_id/value_converted/unit_converted
+    labs_vitals_union = (
+        labs_vitals_union
+        .withColumn("measurement_concept_id", F.col("std_concept_id"))
+        .withColumn("value_as_number", F.col("value_converted").cast("double"))
+        .withColumn("unit_source_value", F.col("unit_converted"))
+        .select(*schemas.OMOP_MEASUREMENT_SCHEMA.fieldNames())
+    )
 
     # perform fallback logic for all unmapped measurements (for now, null all values)
     unmapped_msmt = msmt.join(
@@ -1884,155 +2262,12 @@ def standardize(msmt, concept, concept_ancestor):
     )
 
     # perform fallback logic for all other measurement types
-    fallback_msmt = autostd(unmapped_msmt)
+    fallback_msmt = standardize_numeric_values_and_units(unmapped_msmt)
 
     # union all data frames and return
     final_msmt = labs_vitals_union.unionByName(fallback_msmt, allowMissingColumns=True)
 
     return final_msmt
-
-def autostd(msmt):
-
-    # map units to canonical value
-    unit_lower = F.lower(F.col("unit_source_value"))
-    normalized_unit = (
-        # mass-concentration ladder: mg/dL <-> g/dL <-> g/L <-> mg/L <-> mg/mL
-        F.when(unit_lower.rlike(r'^mg/\s?dl$'), F.lit("mg/dL"))
-        .when(unit_lower.rlike(r'^gm?/dl$'), F.lit("g/dL"))
-        .when(unit_lower == "g/l", F.lit("g/L"))
-        .when(unit_lower == "mg/l", F.lit("mg/L"))
-        .when(unit_lower == "mg/ml", F.lit("mg/mL"))
-        # hormone/protein ladder: pg/mL <-> ng/L <-> ng/dL <-> ng/mL
-        .when(unit_lower == "pg/ml", F.lit("pg/mL"))
-        .when(unit_lower == "ng/l", F.lit("ng/L"))
-        .when(unit_lower == "ng/dl", F.lit("ng/dL"))
-        .when(unit_lower == "ng/ml", F.lit("ng/mL"))
-        # microgram ladder: ug/mL <-> ug/dL ("mcg" is a synonym for "ug")
-        .when((unit_lower == "ug/ml") | (unit_lower == "mcg/ml"), F.lit("ug/mL"))
-        .when((unit_lower == "ug/dl") | (unit_lower == "mcg/dl"), F.lit("ug/dL"))
-        .when(unit_lower.like("mcg/mg%"), F.lit("mcg/mg"))
-        # cell-count ladder: Cells/uL <-> Thousand/uL <-> Million/uL
-        .when(
-            unit_lower.like("th%/ul") | unit_lower.like("th%/mcl")
-            | unit_lower.like("%10%3/ul") | unit_lower.like("%10%3/mcl")
-            | unit_lower.rlike(r'^k/[ucm].+$') | unit_lower.rlike(r'^10.3/ul$'),
-            F.lit("Thousand/uL")
-        )
-        .when(unit_lower.rlike(r'^cell.*/[ucm].+$'), F.lit("Cells/uL"))
-        .when(
-            unit_lower.like("m%/ul") | unit_lower.like("m%/mcl") | unit_lower.like("m%/mm3")
-            | unit_lower.rlike(r'^m.*/cu?mm$') | unit_lower.like("%10%6/ul"),
-            F.lit("Million/uL")
-        )
-        # enzyme/antibody activity units
-        .when(unit_lower == "iu/ml", F.lit("International Units/mL"))
-        .when(
-            unit_lower.rlike(r'^u.?iu.?/ml$') | unit_lower.rlike(r'^mc?i?u.*/l$') | (unit_lower == "mciu/ml"),
-            F.lit("uIU/mL")
-        )
-        .when(unit_lower.rlike(r'^.*i?u.*/l$'), F.lit("Unit/L"))
-        .when(unit_lower == "leu/ul", F.lit("Leu/uL"))
-        # electrolytes / catecholamines
-        .when(unit_lower.like("mmo%/l"), F.lit("mmol/L"))
-        .when(unit_lower == "nmol/l", F.lit("nmol/L"))
-        # misc single-unit families
-        .when(unit_lower == "mmhg", F.lit("mmHg"))
-        .when(unit_lower.like("s%"), F.lit("Second(s)"))
-        .when(F.col("unit_source_value").rlike(r'^%.*$'), F.lit("%"))
-        .when(unit_lower == "counts/min", F.lit("Counts/Min"))
-        .when(unit_lower.like("mm/h%"), F.lit("mm/h"))
-        .when(unit_lower == "kg/m^2", F.lit("kg/m^2"))
-        # anthropometrics (height/weight; temperature intentionally excluded, see note below)
-        .when(unit_lower.like("in%"), F.lit("Inches"))
-        .when(unit_lower == "ft", F.lit("Feet"))
-        .when(unit_lower.like("o%"), F.lit("oz"))
-        .when(unit_lower.like("lb%"), F.lit("lb"))
-        .otherwise(F.col("unit_source_value"))
-    )
-
-    # normalize unit
-    df = msmt.withColumn("unit_norm", normalized_unit)
-
-    # perform value conversion to measurement concept mode unit where possible, drop if not possible
-    unit_to_canonical = {
-        # mass-concentration ladder, relative to mg/dL
-        "mg/dL": 1.0,
-        "g/dL": 1000.0,
-        "g/L": 0.01,
-        "mg/L": 0.1,
-        "mg/mL": 100.0,
-        # hormone/protein ladder, relative to pg/mL
-        "pg/mL": 1.0,
-        "ng/L": 1.0,
-        "ng/dL": 10.0,
-        "ng/mL": 1000.0,
-        # microgram ladder, relative to ug/mL
-        "ug/mL": 1.0,
-        "ug/dL": 0.01,
-        # cell-count ladder, relative to Cells/uL
-        "Cells/uL": 1.0,
-        "Thousand/uL": 1000.0,
-        "Million/uL": 1000000.0,
-        # anthropometrics
-        "Inches": 1.0,
-        "Feet": 12.0,
-        "oz": 1.0,
-        "lb": 16.0,
-        # single-unit families: identity, kept so same-unit pairs still resolve via the lookup
-        "Unit/L": 1.0,
-        "International Units/mL": 1.0,
-        "uIU/mL": 1.0,
-        "Leu/uL": 1.0,
-        "mmol/L": 1.0,
-        "nmol/L": 1.0,
-        "mmHg": 1.0,
-        "Second(s)": 1.0,
-        "%": 1.0,
-        "Counts/Min": 1.0,
-        "mm/h": 1.0,
-        "kg/m^2": 1.0,
-        "mcg/mg": 1.0,
-    }
-
-    # create map of normalized unit to conversion factor
-    factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
-
-    # compute the target unit for each row of measurements
-    pair_w = Window.partitionBy("measurement_concept_id", "unit_norm")
-    df = df.withColumn("pair_count", F.count("*").over(pair_w))
-    # tiebreak on unit_norm itself so the mode pick is deterministic when two units are equally common
-    rank_w = Window.partitionBy("measurement_concept_id").orderBy(F.desc("pair_count"), F.col("unit_norm"))
-    df = df.withColumn("unit_rank", F.row_number().over(rank_w))
-    mode_w = Window.partitionBy("measurement_concept_id")
-    df = df.withColumn(
-        "target_unit",
-        F.min(F.when(F.col("unit_rank") == 1, F.col("unit_norm"))).over(mode_w)
-    )
-
-    # perform unit and value conversion for non-mode units
-    df = df.withColumn("factor_from", factor_map[F.col("unit_norm")])
-    df = df.withColumn("factor_to", factor_map[F.col("target_unit")])
-    already_target = F.col("unit_norm") == F.col("target_unit")
-    convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull()
-    success = already_target | convertible
-    value_num = F.col("value_source_value").try_cast("double")
-    df = df.withColumn(
-        "value_std",
-        F.when(already_target, F.round(value_num, 3))
-         .when(convertible, F.round(value_num * F.col("factor_from") / F.col("factor_to"), 3))
-    )
-    df = df.withColumn(
-        "unit_std",
-        F.when(success, F.col("target_unit"))
-    )
-
-    # reformat columns
-    df = df.drop("pair_count", "unit_rank", "factor_from", "factor_to")
-    df = df.withColumnRenamed("value_std", "value_converted")
-    df = df.withColumnRenamed("unit_std", "unit_converted")
-    df = df.withColumn("std_concept_id", F.col("measurement_concept_id"))
-
-    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to")
 
 if __name__ == "__main__":
 
@@ -2067,4 +2302,4 @@ if __name__ == "__main__":
     concept_ancestor = spark.read.csv(str(concept_ancestor_path), schema=schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, header=True)
 
     # standardize measurements
-    std_msmt = standardize(msmt, concept, concept_ancestor)
+    std_msmt = lv_standardize(msmt, concept, concept_ancestor)

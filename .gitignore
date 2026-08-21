@@ -8,4 +8,4 @@ instructions.txt
 .env
 /tests/__pycache__
 /temp_docs
-test.oy
+test.py

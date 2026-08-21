@@ -1,11 +1,20 @@
 from meds_biobank.standardizers.standardizers import standardize, autostd
+from meds_biobank import schemas
 import pyspark.sql.functions as F
 from pyspark.sql.types import StringType, IntegerType, DoubleType
+from pyspark.testing import assertSchemaEqual
+import pytest
 
 def test_standardizers(spark, measurement, concept, concept_ancestor):
 
+    # test schema
+    assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
+
     # run autostd function
     autostd_msmt = autostd(measurement)
+
+    # test schema
+    assertSchemaEqual(autostd_msmt.schema, schemas.STD_OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
 
     # test that each measurement concept id is associated to no more than one unit
     test_count = (
@@ -39,12 +48,17 @@ def test_standardizers(spark, measurement, concept, concept_ancestor):
     std_msmt_ids = std_msmt.select("measurement_id").distinct()
     assert (all_msmt_ids.count() == std_msmt_ids.count())
 
-    # test that field data types are correct
-    assert isinstance(std_msmt.schema["std_concept_id"].dataType, IntegerType)
-    assert isinstance(std_msmt.schema["value_converted"].dataType, DoubleType)
-    assert isinstance(std_msmt.schema["unit_converted"].dataType, StringType)
-
     # ensure no null std concept ids
     assert (std_msmt.filter(F.col("std_concept_id").isNull()).count() == 0)
 
-# TODO: add schema tests
+    # test schema
+    assertSchemaEqual(std_msmt.schema, schemas.STD_OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
+
+def test_malformed_input_types(spark, measurement, concept, concept_ancestor):
+    with pytest.raises(ValueError):
+        std_msmt = standardize("foo", concept, concept_ancestor)
+        std_msmt = standardize(measurement, "foo", concept_ancestor)
+        std_msmt = standardize(measurement, concept, "bar")
+        std_msmt = standardize(measurement, concept, False)
+        std_msmt = autostd("foo")
+        std_msmt = autostd(True)

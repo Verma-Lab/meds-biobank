@@ -10,7 +10,7 @@ SPECIAL_CONCEPTS = {k:v for k,v in concepts.VISIT_FLAGS.items()}
 SPECIAL_CONCEPTS["OMOP_BIRTH"] = OMOP_BIRTH
 SPECIAL_CONCEPTS["OMOP_DEATH"] = OMOP_DEATH
 
-def extract_events(df, table, measurements_prestandardized=True):
+def extract_events(df, table):
     """
     Convert an OMOP table into an unordered MEDS-DataSchema-LIKE table in flat format, containing all events
     Reads: visit_occurrence (admission and discharge), visit_supplement, drug_exposure, condition_occurrence, observation, procedure_occurrence, measurement, labs_, vitals_, death, person
@@ -217,33 +217,17 @@ def extract_events(df, table, measurements_prestandardized=True):
         # dedup
         events = events.dropDuplicates(["measurement_id"])
 
-        if not measurements_prestandardized:
-
-            # get measurement events
-            events = (
-                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-                .withColumn("concept_id", F.col("measurement_concept_id"))
-                .filter(F.col("concept_id") != 0)
-                .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
-                .withColumn("event_type", F.lit("measurement"))
-                .withColumn("visit_id", F.col("visit_occurrence_id"))
-                .withColumn("unit", F.col("unit_source_value"))
-                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
-            )
-        
-        else:
-
-            # get measurement events, but note that unit, value, and concept_id should come from special fields
-            events = (
-                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-                .withColumn("concept_id", F.col("std_concept_id"))
-                .filter(F.col("concept_id") != 0)
-                .withColumn("value", F.col("value_converted")) # basically either a float or smthg like "negative" or "-", etc.
-                .withColumn("event_type", F.lit("measurement"))
-                .withColumn("visit_id", F.col("visit_occurrence_id"))
-                .withColumn("unit", F.col("unit_converted"))
-                .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
-            )
+        # get measurement events
+        events = (
+            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+            .withColumn("concept_id", F.col("measurement_concept_id"))
+            .filter(F.col("concept_id") != 0)
+            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
+            .withColumn("event_type", F.lit("measurement"))
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("unit", F.col("unit_source_value"))
+            .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
+        )
 
     # undefined table
     else:
@@ -260,7 +244,7 @@ def extract_events(df, table, measurements_prestandardized=True):
         events = events.withColumn("code", F.col("concept_id")).drop("concept_id")
 
     # cast visit id to correct type
-    events = events.withColumn("visit_id", F.col("visit_id").cast("long"))
+    events = events.withColumn("visit_id", F.col("visit_id"))
         
     return events
 
@@ -344,8 +328,8 @@ def post_process_events(events):
     """
     events = ( # TODO: replace with pyspark sql pattern (avoid SQL injections)
         events
-        .withColumn("numeric_value", F.expr("try_cast(value AS FLOAT)"))
-        .withColumn("text_value", F.when(F.expr("try_cast(value AS FLOAT)").isNull(), F.col("value")).otherwise(F.lit(None)))
+        .withColumn("numeric_value", F.expr("try_cast(value AS DOUBLE)"))
+        .withColumn("text_value", F.when(F.expr("try_cast(value AS DOUBLE)").isNull(), F.col("value")).otherwise(F.lit(None)))
         .drop("value")
     )
     return events
@@ -361,7 +345,7 @@ def format_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
-    return events.orderBy("patient_id", "time")
+    return events.orderBy("patient_id", "time", "visit_id")
 
 def create_concept_schema(events, concept, concept_ancestor):
     """
@@ -469,9 +453,9 @@ def create_concept_schema(events, concept, concept_ancestor):
             [(code, name) for name, code in SPECIAL_CONCEPTS.items()],
             ["code", "name"]
         )
+        .withColumn("code", F.col("code").cast("int"))
         .withColumn("ancestors", F.lit(None).cast(cn.schema["ancestors"].dataType))
         .withColumn("factors", F.lit(None).cast(cn.schema["factors"].dataType))
-
     )
 
     # drop special concepts that already have a real row in cn (e.g. birth/death concept ids that also occur as genuine OMOP vocabulary concepts)

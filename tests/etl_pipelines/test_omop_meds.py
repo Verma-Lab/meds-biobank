@@ -2,6 +2,8 @@ import pytest
 import pyspark.sql.functions as F
 from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema
 from meds_biobank.standardizers.standardizers import standardize
+from meds_biobank import schemas
+from pyspark.testing import assertSchemaEqual
 
 @pytest.fixture(scope="session")
 def standardized_measurement(measurement, concept, concept_ancestor):
@@ -65,6 +67,11 @@ def test_extract_meds_events(
     ).count()
     assert (test_count == 0)
 
+    # add schema tests
+    assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
+    assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
+
+
 def test_extract_std_meds_events(
     concept,
     concept_ancestor,
@@ -124,8 +131,6 @@ def test_extract_std_meds_events(
     ).count()
     assert (test_count == 0)
 
-# TODO: ensure that all required fields are never null
-
-# TODO: ensure that all fields are of correct type
-
-# TODO: add schema tests
+    # add schema tests
+    assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
+    assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
