@@ -1,13 +1,16 @@
 import pytest
 import pyspark.sql.functions as F
 from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema
-from meds_biobank.standardizers.standardizers import standardize
+from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
 from meds_biobank import schemas
 from pyspark.testing import assertSchemaEqual
 
 @pytest.fixture(scope="session")
 def standardized_measurement(measurement, concept, concept_ancestor):
-    return standardize(measurement, concept, concept_ancestor)
+    std = standardize_measurement_concept_id(measurement, concept, concept_ancestor)
+    std = standardize_numeric_values_and_units(std)
+    std = standardize_text_value(std)
+    return std
 
 def test_extract_meds_events(
     concept,
@@ -39,7 +42,7 @@ def test_extract_meds_events(
     # extract events
     event_dfs = []
     for table, name in zip(tables, table_names):
-        result = extract_events(table, name, measurements_prestandardized=False)
+        result = extract_events(table, name)
         event_dfs.append(result)
 
     # gather events together
@@ -70,6 +73,11 @@ def test_extract_meds_events(
     # add schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
     assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
+
+    # ensure that every occurring concept made it into concept schema
+    all_codes = formatted_events.select("code").distinct()
+    cs_codes = concept_schema.select("code").distinct()
+    assert (all_codes.count() == cs_codes.count())
 
 
 def test_extract_std_meds_events(
@@ -103,7 +111,7 @@ def test_extract_std_meds_events(
     # extract events
     event_dfs = []
     for table, name in zip(tables, table_names):
-        result = extract_events(table, name, measurements_prestandardized=True)
+        result = extract_events(table, name)
         event_dfs.append(result)
 
     # gather events together
@@ -134,3 +142,8 @@ def test_extract_std_meds_events(
     # add schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
     assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
+
+    # ensure that every occurring concept made it into concept schema
+    all_codes = formatted_events.select("code").distinct()
+    cs_codes = concept_schema.select("code").distinct()
+    assert (all_codes.count() == cs_codes.count())

@@ -255,9 +255,12 @@ MEDS_CONCEPT_SCHEMA = StructType([
         ArrayType(StructType([
             StructField("ancestor_concept_id", IntegerType(), False),
             StructField("min_levels_of_separation", IntegerType(), False)
-        ]))
+        ])),
+        True
     ),
-    StructField("factors", ArrayType(IntegerType()))
+    StructField("factors", ArrayType(IntegerType()), True),
+    StructField("event_type", StringType(), False),
+    StructField("units", ArrayType(StringType()), True)
 ])
 
 # TODO: add meds split schema

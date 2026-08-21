@@ -1,7 +1,6 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 from meds_biobank import concepts
-from meds_biobank.standardizers.standardizers import standardize
 
 OMOP_BIRTH = concepts.OMOP_BIRTH
 OMOP_DEATH = concepts.OMOP_DEATH
@@ -217,7 +216,7 @@ def extract_events(df, table):
         # dedup
         events = events.dropDuplicates(["measurement_id"])
 
-        if "concept_id_std" in {field.name for field in table.schema}:
+        if "concept_id_std" in {field.name for field in df.schema}:
             # get measurement events, standardized path
             events = (
                 events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
@@ -226,7 +225,7 @@ def extract_events(df, table):
                 .withColumn("value", F.coalesce(F.col("numeric_value_std").cast("string"), F.col("text_value_std"))) # basically either a float or smthg like "negative" or "-", etc.
                 .withColumn("event_type", F.lit("measurement"))
                 .withColumn("visit_id", F.col("visit_occurrence_id"))
-                .withColumn("unit", F.col("unit_source_value"))
+                .withColumn("unit", F.col("unit_std"))
                 .select("patient_id", "time", "concept_id", "value", "event_type", "visit_id", "unit")
             )
         else:
@@ -471,10 +470,26 @@ def create_concept_schema(events, concept, concept_ancestor):
         .withColumn("factors", F.lit(None).cast(cn.schema["factors"].dataType))
     )
 
+    # filter to just occurring ones
+    special_df = special_df.join(oc, on="code", how="inner")
+
     # drop special concepts that already have a real row in cn (e.g. birth/death concept ids that also occur as genuine OMOP vocabulary concepts)
     special_df = special_df.join(cn.select("code"), on="code", how="left_anti")
 
+    # union results
     cn = cn.unionByName(special_df)
+
+    # join event_type
+    code_to_et = events.groupBy("code").agg(F.first("event_type").alias("event_type"))
+    cn = cn.join(
+        code_to_et,
+        "code",
+        "left"
+    )
+
+    # join units
+    code_to_unit = events.groupBy("code").agg(F.collect_list("unit").alias("units"))
+    cn = cn.join(code_to_unit, "code", "left")
 
     return cn
 
