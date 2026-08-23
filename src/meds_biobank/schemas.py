@@ -260,6 +260,14 @@ MEDS_CONCEPT_SCHEMA = StructType([
     StructField("units", ArrayType(StringType()), True)
 ])
 
-# TODO: add meds split schema
+MEDS_SPLIT_SCHEMA = StructType([
+    StructField("patient_id", LongType(), False),
+    StructField("split", StringType(), False) # train/val/test/task
+])
 
-# TODO: add meds task schema(s)
+MEDS_TASK_SCHEMA = StructType([
+    StructField("patient_id", LongType(), False),
+    StructField("prediction_time", TimestampType(), False),
+    StructField("label", StringType(), False),
+    StructField("split", StringType(), False) # train/val/test
+])
