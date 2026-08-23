@@ -72,6 +72,12 @@ def test_extract_meds_events(
     # test no concepts with id 0
     assert (all_codes.filter(F.col("code") == 0).count() == 0)
 
+    # ensure ancestor/factor content
+    diabetes_row = concept_schema.filter(F.col("code") == 201826).collect()[0]
+    ancestor_ids = {a["ancestor_concept_id"] for a in diabetes_row["ancestors"]}
+    assert 201820 in ancestor_ids
+    assert 201820 in diabetes_row["factors"]
+
 
 def test_extract_std_meds_events(
     concept,
@@ -133,6 +139,12 @@ def test_extract_std_meds_events(
 
     # test no concepts with id 0
     assert (all_codes.filter(F.col("code") == 0).count() == 0)
+
+    # ensure ancestor/factor content
+    diabetes_row = concept_schema.filter(F.col("code") == 201826).collect()[0]
+    ancestor_ids = {a["ancestor_concept_id"] for a in diabetes_row["ancestors"]}
+    assert 201820 in ancestor_ids
+    assert 201820 in diabetes_row["factors"]
 
 def test_extract_splits(spark, person):
     # valid split

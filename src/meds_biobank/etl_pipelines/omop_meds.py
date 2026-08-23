@@ -397,8 +397,13 @@ def create_concept_schema(events, concept, concept_ancestor):
 
     # collect (ancestor, distance) pairs into one array of structs — keeps them bound
     # together so there's no risk of two separate arrays misaligning
+    ca_filt = concept_ancestor.join(
+        oc,
+        concept_ancestor.descendant_concept_id == oc.code,
+        "inner"
+    ).drop("code")
     ca = (
-        concept_ancestor
+        ca_filt
         .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
         .groupBy("descendant_concept_id")
         .agg(
@@ -417,10 +422,10 @@ def create_concept_schema(events, concept, concept_ancestor):
 
     # join domain to descendants
     ca_domain_scoped = (
-        concept_ancestor.select("ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation")
+        ca_filt.select("ancestor_concept_id", "descendant_concept_id", "min_levels_of_separation")
         .join(
             concept.select("concept_id", "domain_id"),
-            concept_ancestor.descendant_concept_id == concept.concept_id,
+            ca_filt.descendant_concept_id == concept.concept_id,
             "inner"
         )
         .drop("concept_id")
@@ -594,6 +599,7 @@ if __name__ == "__main__":
         .master("local[2]")
         .appName("meds-biobank-etl")
         .config("spark.sql.shuffle.partitions", "2")
+        .config("spark.driver.memory", "4g")
         .getOrCreate()
     )
 
