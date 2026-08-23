@@ -69,7 +69,8 @@ def test_extract_meds_events(
     cs_codes = concept_schema.select("code").distinct()
     assert (all_codes.count() == cs_codes.count())
 
-    # TODO: no concepts with id 0
+    # test no concepts with id 0
+    assert (all_codes.filter(F.col("code") == 0).count() == 0)
 
 
 def test_extract_std_meds_events(
@@ -130,7 +131,8 @@ def test_extract_std_meds_events(
     cs_codes = concept_schema.select("code").distinct()
     assert (all_codes.count() == cs_codes.count())
 
-    # TODO: test no concepts with id 0
+    # test no concepts with id 0
+    assert (all_codes.filter(F.col("code") == 0).count() == 0)
 
 def test_extract_splits(spark, person):
     # valid split

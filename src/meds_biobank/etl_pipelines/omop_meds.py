@@ -387,6 +387,14 @@ def create_concept_schema(events, concept, concept_ancestor):
     # select all concepts and names
     cn = concept.select("concept_id", "concept_name")
 
+    # filter results for occurring concepts only
+    oc = events.select("code").distinct()
+    cn = cn.join(
+        oc,
+        cn.concept_id == oc.code,
+        "inner"
+    ).drop("code")
+
     # collect (ancestor, distance) pairs into one array of structs — keeps them bound
     # together so there's no risk of two separate arrays misaligning
     ca = (
@@ -405,7 +413,7 @@ def create_concept_schema(events, concept, concept_ancestor):
         ca,
         cn.concept_id == ca.descendant_concept_id,
         "left"
-    ).drop(ca.descendant_concept_id).withColumnRenamed("concept_name", "name") # concept_id, name, ancestors
+    ).drop("descendant_concept_id").withColumnRenamed("concept_name", "name") # concept_id, name, ancestors
 
     # join domain to descendants
     ca_domain_scoped = (
@@ -415,7 +423,7 @@ def create_concept_schema(events, concept, concept_ancestor):
             concept_ancestor.descendant_concept_id == concept.concept_id,
             "inner"
         )
-        .drop(concept.concept_id)
+        .drop("concept_id")
         .withColumnRenamed("domain_id", "descendant_domain")
     ) # ancestor_concept_id, descendant_concept_id, descendant_domain
 
@@ -427,7 +435,7 @@ def create_concept_schema(events, concept, concept_ancestor):
             ca_domain_scoped.ancestor_concept_id == concept.concept_id,
             "inner"
         )
-        .drop(concept.concept_id)
+        .drop("concept_id")
         .withColumnRenamed("domain_id", "ancestor_domain")
     ) # ancestor_concept_id, descendant_concept_id, descendant_domain, ancestor_domain
 
@@ -457,17 +465,12 @@ def create_concept_schema(events, concept, concept_ancestor):
     # join to concept, name, ancestor df
     cn = cn.join(
         cad,
-        cn.concept_id == cad.concept_id,
+        "concept_id",
         "left"
-    ).drop(cad.concept_id)
+    )
 
-    # filter results for occurring concepts only
-    oc = events.select("code").distinct()
-    cn = cn.join(
-        oc,
-        cn.concept_id == oc.code,
-        "inner"
-    ).drop(cn.concept_id)
+    # rename cn concept_id to code
+    cn = cn.withColumnRenamed("concept_id", "code")
 
     # add special concepts (e.g. visit flags)
     special_df = (
@@ -582,7 +585,7 @@ if __name__ == "__main__":
     import shutil
     from dotenv import load_dotenv
     import os
-    from meds_biobank.standardizers.standardizers import standardize
+    from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
     from meds_biobank import schemas
 
     # create spark session
@@ -627,7 +630,7 @@ if __name__ == "__main__":
     # extract events
     event_dfs = []
     for table, name in zip(tables, table_names):
-        result = extract_events(table, name, measurements_prestandardized=False)
+        result = extract_events(table, name)
         event_dfs.append(result)
 
     # gather events together

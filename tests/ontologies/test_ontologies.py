@@ -1,5 +1,5 @@
 import pytest
-from meds_biobank.standardizers.standardizers import standardize
+from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
 from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema
 from meds_biobank.ontologies.ontologies import Ontology
 from dotenv import load_dotenv
@@ -8,7 +8,10 @@ import os
 
 @pytest.fixture(scope="session")
 def standardized_measurement(measurement, concept, concept_ancestor):
-    return standardize(measurement, concept, concept_ancestor)
+    std = standardize_measurement_concept_id(measurement, concept, concept_ancestor)
+    std = standardize_numeric_values_and_units(std)
+    std = standardize_text_value(std)
+    return std
 
 @pytest.fixture(scope="session")
 def meds_events(
