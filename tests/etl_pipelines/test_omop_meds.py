@@ -60,7 +60,7 @@ def test_extract_meds_events(
     # compute concept schema
     concept_schema = create_concept_schema(formatted_events, concept, concept_ancestor)
 
-    # add schema tests
+    # schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
     assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
 
@@ -121,7 +121,7 @@ def test_extract_std_meds_events(
     # compute concept schema
     concept_schema = create_concept_schema(formatted_events, concept, concept_ancestor)
 
-    # add schema tests
+    # schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
     assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
 
@@ -129,6 +129,8 @@ def test_extract_std_meds_events(
     all_codes = formatted_events.select("code").distinct()
     cs_codes = concept_schema.select("code").distinct()
     assert (all_codes.count() == cs_codes.count())
+
+    # TODO: test no concepts with id 0
 
 def test_extract_splits(spark, person):
     # valid split
