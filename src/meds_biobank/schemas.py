@@ -233,12 +233,10 @@ PMBB_VISIT_OCCURRENCE_SUPPLEMENT_SCHEMA = StructType([
     StructField("IsVideoVisit", IntegerType(), True),
 ])
 
-# add MEDS events schema
 MEDS_EVENT_SCHEMA = StructType([
     StructField("patient_id", LongType(), False),
     StructField("code", IntegerType(), False),
     StructField("time", TimestampType(), False),
-    StructField("event_type", StringType(), False),
     StructField("end", TimestampType(), True),
     StructField("numeric_value", DoubleType(), True),
     StructField("unit", StringType(), True),
@@ -246,7 +244,6 @@ MEDS_EVENT_SCHEMA = StructType([
     StructField("visit_id", IntegerType(), True)
 ])
 
-# add meds concept schema
 MEDS_CONCEPT_SCHEMA = StructType([
     StructField("code", IntegerType(), False),
     StructField("name", StringType(), False),
@@ -254,8 +251,8 @@ MEDS_CONCEPT_SCHEMA = StructType([
         "ancestors",
         ArrayType(StructType([
             StructField("ancestor_concept_id", IntegerType(), False),
-            StructField("min_levels_of_separation", IntegerType(), False)
-        ])),
+            StructField("min_levels_of_separation", IntegerType(), False),
+        ]), False),
         True
     ),
     StructField("factors", ArrayType(IntegerType()), True),

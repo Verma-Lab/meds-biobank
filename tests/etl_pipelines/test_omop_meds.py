@@ -60,16 +60,6 @@ def test_extract_meds_events(
     # compute concept schema
     concept_schema = create_concept_schema(formatted_events, concept, concept_ancestor)
 
-    # ensure that each code maps to exactly one event type
-    test_count = (
-        formatted_events
-        .groupBy("code")
-        .agg(F.collect_set("event_type").alias("event_types"))
-        .withColumn("num_event_types", F.size("event_types"))
-        .filter(F.col("num_event_types") != 1)
-    ).count()
-    assert (test_count == 0)
-
     # add schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
     assertSchemaEqual(concept_schema.schema, schemas.MEDS_CONCEPT_SCHEMA, ignoreColumnOrder=True)
@@ -78,6 +68,8 @@ def test_extract_meds_events(
     all_codes = formatted_events.select("code").distinct()
     cs_codes = concept_schema.select("code").distinct()
     assert (all_codes.count() == cs_codes.count())
+
+    # TODO: no concepts with id 0
 
 
 def test_extract_std_meds_events(
@@ -128,16 +120,6 @@ def test_extract_std_meds_events(
 
     # compute concept schema
     concept_schema = create_concept_schema(formatted_events, concept, concept_ancestor)
-
-    # ensure that each code maps to exactly one event type
-    test_count = (
-        formatted_events
-        .groupBy("code")
-        .agg(F.collect_set("event_type").alias("event_types"))
-        .withColumn("num_event_types", F.size("event_types"))
-        .filter(F.col("num_event_types") != 1)
-    ).count()
-    assert (test_count == 0)
 
     # add schema tests
     assertSchemaEqual(formatted_events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
