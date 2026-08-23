@@ -1,7 +1,10 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from pyspark.sql import DataFrame
+from pyspark.testing import assertSchemaEqual
 from meds_biobank import concepts
 from meds_biobank import schemas
+import random
 
 OMOP_BIRTH = concepts.OMOP_BIRTH
 OMOP_DEATH = concepts.OMOP_DEATH
@@ -502,9 +505,7 @@ def create_concept_schema(events, concept, concept_ancestor):
     code_to_unit = events.groupBy("code").agg(F.collect_list("unit").alias("units"))
     cn = cn.join(code_to_unit, "code", "left")
 
-    # enforce the declared schema exactly: our joins/aggregations above satisfy these
-    # nullability guarantees structurally, but Spark loosens them anyway during inference,
-    # so stamp them explicitly rather than let assertSchemaEqual disagree with reality
+    # enforce the declared schema exactly
     cn = cn.select(*[f.name for f in schemas.MEDS_CONCEPT_SCHEMA.fields])
     cn = cn.sparkSession.createDataFrame(cn.rdd, schema=schemas.MEDS_CONCEPT_SCHEMA)
 
@@ -523,6 +524,51 @@ def extract_tasks(
     visit_occurrence
 ):
     pass
+
+def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
+
+    # type guard
+    if not isinstance(person, DataFrame):
+        raise ValueError()
+    
+    # schema guard
+    try:
+        assertSchemaEqual(person.schema, schemas.OMOP_PERSON_SCHEMA, ignoreColumnOrder=True)
+    except:
+        raise ValueError()
+    
+    # check percentages are valid
+    if abs((train + val + test + task) - 1.0) > 1e-9:
+        raise ValueError()
+
+    # set random seed
+    random.seed(42)
+    
+    # get person ids
+    ids = [row["person_id"] for row in person.select("person_id").distinct().collect()]
+
+    # shuffle and split
+    random.shuffle(ids)
+    n = len(ids)
+    train_ids = ids[:int(n*train)]
+    val_ids = ids[int(n*train):int(n*(train+val))]
+    test_ids = ids[int(n*(train+val)):int(n*(train+val+test))]
+    task_ids = ids[int(n*(train+val+test)):]
+    data = [(i, "train") for i in train_ids] + [(i, "val") for i in val_ids] + [(i, "test") for i in test_ids] + [(i, "task") for i in task_ids]
+    cols = ["person_id", "split"]
+
+    # form spark dataframe
+    splits = spark.createDataFrame(data, schema=cols)
+    
+    # cast person id col
+    splits = splits.withColumn("patient_id", F.crc32("person_id")).drop("person_id")
+
+    # cast to meds split schema before returning
+    splits = splits.select(*[f.name for f in schemas.MEDS_SPLIT_SCHEMA.fields])
+    splits = splits.sparkSession.createDataFrame(splits.rdd, schema=schemas.MEDS_SPLIT_SCHEMA)
+
+    return splits
+
 
 if __name__ == "__main__":
 

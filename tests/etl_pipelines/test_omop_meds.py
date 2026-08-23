@@ -1,6 +1,6 @@
 import pytest
 import pyspark.sql.functions as F
-from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema
+from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema, extract_splits
 from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
 from meds_biobank import schemas
 from pyspark.testing import assertSchemaEqual
@@ -129,3 +129,29 @@ def test_extract_std_meds_events(
     all_codes = formatted_events.select("code").distinct()
     cs_codes = concept_schema.select("code").distinct()
     assert (all_codes.count() == cs_codes.count())
+
+def test_extract_splits(spark, person):
+    # valid split
+    splits = extract_splits(spark, person)
+    assertSchemaEqual(splits.schema, schemas.MEDS_SPLIT_SCHEMA, ignoreColumnOrder=True)
+
+    # every patient appears exactly once
+    n_persons = person.select("person_id").distinct().count()
+    assert splits.count() == n_persons
+    assert splits.select("patient_id").distinct().count() == n_persons
+
+    # only valid split labels
+    labels = {row["split"] for row in splits.select("split").distinct().collect()}
+    assert labels <= {"train", "val", "test", "task"}
+
+    # non-DataFrame input rejected
+    with pytest.raises(ValueError):
+        extract_splits(spark, [1, 2, 3])
+
+    # wrong-schema input rejected
+    with pytest.raises(ValueError):
+        extract_splits(spark, person.drop("gender_concept_id"))
+
+    # percentages must sum to 1.0
+    with pytest.raises(ValueError):
+        extract_splits(spark, person, train=0.5, val=0.1, test=0.1, task=0.1)
