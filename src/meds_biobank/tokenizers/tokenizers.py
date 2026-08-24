@@ -3,7 +3,7 @@ import math
 from datetime import datetime, timezone, timedelta
 import pyspark.sql.functions as F
 
-SPECIAL_TOKENS = ["BOS", "BOV"]
+SPECIAL_TOKENS = ["BOS", "BOE"]
 
 class BaseTokenizer():
 
@@ -13,6 +13,7 @@ class BaseTokenizer():
         qualifiers=False,
         event_types=False,
         factors=False,
+        units=True,
         factor_types=[] # any list of valid event_types
     ):
 
@@ -33,6 +34,7 @@ class BaseTokenizer():
         self.event_types = event_types
         self.factors = factors
         self.factor_types = factor_types
+        self.units = units
 
         # register tokenizer fields
         self.symbols = None
@@ -54,9 +56,14 @@ class BaseTokenizer():
                 self.symbol_to_id[code] = self.next_id
                 self.next_id += 1
             
-            # add bins
+            # add numeric bins
             for bin in self.ontology.bins:
                 self.symbol_to_id[bin] = self.next_id
+                self.next_id += 1
+            
+            # add textual bins
+            for text in self.ontology.common_text_values:
+                self.symbol_to_id[text] = self.next_id
                 self.next_id += 1
 
             # add special tokens
@@ -65,23 +72,29 @@ class BaseTokenizer():
                 self.next_id += 1
 
             # add qualifiers if requested
-            if self.ontology.qualifiers:
+            if self.qualifiers:
                 for qual in self.ontology.qualifiers:
                     self.symbol_to_id[qual] = self.next_id
                     self.next_id += 1
-                
+
             # add event_types if requested
-            if self.ontology.event_types:
+            if self.event_types:
                 for et in self.ontology.event_types:
                     self.symbol_to_id[et] = self.next_id
                     self.next_id += 1
-            
+
             # add factors if requested
-            if self.ontology.factors:
+            if self.factors:
                 for fact in self.ontology.factors:
                     if fact not in self.symbol_to_id:
                         self.symbol_to_id[fact] = self.next_id
                         self.next_id += 1
+
+            # add units if requested
+            if self.units:
+                for unit in self.ontology.units:
+                    self.symbol_to_id[unit] = self.next_id
+                    self.next_id += 1
 
             # build id_to_symbol from symbol_to_id
             self.id_to_symbol = {v:k for k,v in self.symbol_to_id.items()}
@@ -92,6 +105,7 @@ class BaseTokenizer():
             self.symbols = None
             self.symbol_to_id = None
             self.id_to_symbol = None
+            self.next_id = 0
             raise
 
     def tokenize(self, events):
@@ -128,7 +142,8 @@ class BaseTokenizer():
         # init token list, add BOS
         tokens = {
             "codes": [self.symbol_to_id["BOS"]],
-            "times": [None]
+            "times": [None],
+            "visit_ids": [None]
         }
         if self.qualifiers:
             tokens["qualifiers"] = [None]
@@ -137,28 +152,12 @@ class BaseTokenizer():
         if self.factors:
             tokens["factors"] = [None]
         
-        # init tracking var
-        last_visit_id = -1
+        # init tracking vars
+        next_visit_id = 0
+        visit_id_map = dict()
 
         # iterate through events
         for event in events:
-
-            # if new visit, add BOV token
-            if event["visit_id"] is not None:
-                if event["visit_id"] != last_visit_id:
-
-                    # add tokens
-                    tokens["codes"].append(self.symbol_to_id["BOV"])
-                    tokens["times"].append(event["time"])
-                
-                    # rollout fields
-                    if self.qualifiers:
-                        tokens["qualifiers"].append(None)
-                    if self.event_types:
-                        tokens["event_types"].append(None)
-                    if self.factors:
-                        tokens["factors"].append(None)
-                    last_visit_id = event["visit_id"]
 
             # extract primary code
             code = event["code"]
@@ -183,7 +182,6 @@ class BaseTokenizer():
             else:
                 code_token = self.symbol_to_id[code]
             
-            # TODO: convert into option to skip code or not (skip for now)
             # if we do not know the code token, skip this event (continue)
             if code_token is None:
                 continue
@@ -191,44 +189,83 @@ class BaseTokenizer():
             # add token to growing list
             tokens["codes"].append(code_token)
 
-            # if code is msmt code, handle value
-            if code in self.ontology.code_to_bin_ranges:
+            # if code is a msmt code, handle value
+            num_extra_tokens = 0
+            value_token = None
+            unit_token = None
+            if (self.ontology.code_to_event_type[code] == "measurement"):
 
                 # extract numeric value field
-                value = event["numeric_value"]
+                numeric_value = event["numeric_value"]
 
-                # if there is a numeric value, compute its bin and append to codes
-                if value != None:
-                    value = float(value)
-                    if value <= 0.0:
-                        value_code = f"bin_0"
-                    else:
-                        value = math.log1p(value)
-                        for bin, range in self.ontology.code_to_bin_ranges[code].items():
-                            mini = float(range["min"])
-                            maxi = float(range["max"])
-                            if (mini <= value) and (value < maxi):
-                                break
-                        value_code = f"bin_{bin}"
-                    value_token = self.symbol_to_id[value_code]
-                    tokens["codes"].append(value_token)
-                
-                # if value is none, capture
+                # extract unit field
+                unit = event["unit"]
+
+                # extract text value field
+                text_value = event["text_value"]
+
+                # attempt to tokenize numeric value and unit
+                if (code in self.ontology.code_to_bin_ranges) and (numeric_value is not None) and (unit is not None): # if we have deciles for this code, and a value and a unit
+                    if unit in self.ontology.code_to_bin_ranges[code]: # if we have deciles for that unit
+                        nval = float(numeric_value)
+                        if (nval <= 0.0):
+                            value_token = self.symbol_to_id["bin_0"]
+                        else:
+                            nval = math.log1p(nval)
+                            for bin_num, value_range in self.ontology.code_to_bin_ranges[code][unit].items():
+                                mini = float(value_range["min"])
+                                maxi = float(value_range["max"])
+                                if (mini <= nval) and (nval < maxi):
+                                    break
+                            value_token = self.symbol_to_id[f"bin_{bin_num}"]
+                        unit_token = self.symbol_to_id[unit]
+
+                # if this fails, attempt to tokenize text value
+                if (value_token is None):
+                    if (text_value in self.ontology.common_text_values):
+                        value_token = self.symbol_to_id[text_value]
+
+                # if this still fails, no value or unit tokens
+            
+            # now add tokens to the rollout
+            if (value_token is not None):
+                tokens["codes"].append(value_token)
+                num_extra_tokens += 1
+            if (unit_token is not None):
+                tokens["codes"].append(unit_token)
+                num_extra_tokens += 1
+
+            # if the event has a visit id
+            visit_id = None
+            if event["visit_id"] is not None:
+
+                # extract it
+                vid = event["visit_id"]
+
+                # check if the visit id is already registered
+                if vid in visit_id_map:
+
+                    # if it is, lookup the index
+                    visit_id = visit_id_map[vid]
                 else:
-                    value_token = None
-
-            # if code is not msmt code, register that value token is none for book-keeping
-            else:
-                value_token = None
+                    # if not, register it and increment the index
+                    visit_id = next_visit_id
+                    visit_id_map[vid] = next_visit_id
+                    next_visit_id += 1
+            
+            # add visit id
+            tokens["visit_ids"].append(visit_id)
+            for _ in range(num_extra_tokens):
+                tokens["visit_ids"].append(visit_id)
 
             # handle times
             tokens["times"].append(event["time"])
-            if value_token is not None:
+            for _ in range(num_extra_tokens):
                 tokens["times"].append(event["time"])
 
             # handle factors if requested
             if self.factors:
-                if (event["event_type"] in self.factor_types) and (code in self.ontology.code_to_factors): # if event type is a requested one for factors and the code has actual factors
+                if (self.ontology.code_to_event_type[event["code"]] in self.factor_types) and (code in self.ontology.code_to_factors): # if event type is a requested one for factors and the code has actual factors
                     factor_codes = self.ontology.code_to_factors[code]
                     factor_tokens = []
                     for fc in factor_codes:
@@ -236,25 +273,25 @@ class BaseTokenizer():
                     tokens["factors"].append(factor_tokens)
                 else:
                     tokens["factors"].append(None)
-                if value_token is not None:
+                for _ in range(num_extra_tokens):
                     tokens["factors"].append(None)
 
             # handle qualifiers if requested
             if self.qualifiers:
-                qualifiers = self.ontology.code_to_qualifiers[code]
+                qualifiers = self.ontology.code_to_qualifiers.get(code, [])
                 qualifier_tokens = []
                 for qual in qualifiers:
                     qualifier_tokens.append(self.symbol_to_id[qual])
                 tokens["qualifiers"].append(qualifier_tokens)
-                if value_token is not None:
+                for _ in range(num_extra_tokens):
                     tokens["qualifiers"].append(None)
-            
+
             # handle event types
             if self.event_types:
-                event_type_code = event["event_type"]
+                event_type_code = self.ontology.code_to_event_type[event["code"]]
                 event_type_token = self.symbol_to_id[event_type_code]
                 tokens["event_types"].append(event_type_token)
-                if value_token is not None:
+                for _ in range(num_extra_tokens):
                     tokens["event_types"].append(None)
             
         return tokens
@@ -306,15 +343,14 @@ class BaseTokenizer():
             # extract predicted code
             code_token = tokens["codes"][i]
             code = self.id_to_symbol[code_token]
-
-            # handle beginning of visit
-            if code == "BOV":
-                visit_id += 1
-                i += 1
-                continue
             
             # skip beginning of sequence
             if code == "BOS":
+                i += 1
+                continue
+            
+            # skip value and unit tokens as they should have been consumed
+            if (code in self.ontology.bins) or (code in self.ontology.units) or (code in self.ontology.common_text_values):
                 i += 1
                 continue
 
@@ -328,7 +364,7 @@ class BaseTokenizer():
                 "text_value": None,
                 "unit": None,
                 "event_type": None,
-                "visit_id": visit_id
+                "visit_id": None
             }
 
             # set event code
@@ -340,37 +376,59 @@ class BaseTokenizer():
             # set event event_type
             event["event_type"] = self.ontology.code_to_event_type[code]
 
-            # set event numeric_value and unit
-            if i <= (n-2):
-
-                # if next token is a decile bin
+            # handle text value
+            if (i <= n-2):
                 next_token = tokens["codes"][i+1]
                 next_token_symbol = self.id_to_symbol[next_token]
-                if isinstance(next_token_symbol, str):
-                    if next_token_symbol.startswith("bin_"):
+                is_tv = (next_token_symbol in self.ontology.common_text_values)
+                if (is_tv):
+                    event["text_value"] = next_token_symbol
+                    i += 2
+                    events.append(event)
+                    continue
 
-                        # if we can translate bins for this code
-                        if code in self.ontology.code_to_bin_ranges:
+            # handle numeric value and unit
+            if i <= (n-3):
 
-                            # capture bin int
-                            bin_int = int(next_token_symbol.split("_")[1])
+                # check if next token is a decile bin
+                next_token = tokens["codes"][i+1]
+                next_token_symbol = self.id_to_symbol[next_token]
+                is_bin = (next_token_symbol in self.ontology.bins)
+
+                # if it is
+                if is_bin:
+
+                    # relabel and consume the unit too
+                    bin_code = next_token_symbol
+                    unit_token = tokens["codes"][i+2]
+                    unit_code = self.id_to_symbol[unit_token]
+
+                    # if code is in bin ranges and unit has bins stored
+                    if code in self.ontology.code_to_bin_ranges:
+                        if unit_code in self.ontology.code_to_bin_ranges[code]:
+
+                            # get bin
+                            bin_int = int(bin_code.split("_")[1])
 
                             # handle 0 case
                             if (bin_int == 0):
-                                event["numeric_value"] = 0
-                                event["unit"] = self.ontology.code_to_unit[code]
-                                i += 2
-                                events.append(event)
-                                continue
+                                event["numeric_value"] = 0.0
+                            
+                            # if not zero, impute value
+                            else:
 
-                            # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
-                            mini = float(self.ontology.code_to_bin_ranges[code][bin_int]["min"])
-                            maxi = float(self.ontology.code_to_bin_ranges[code][bin_int]["max"])
-                            event["numeric_value"] = math.expm1((mini+maxi)/2)
-                            event["unit"] = self.ontology.code_to_unit[code]
-                            i += 2
-                            events.append(event)
-                            continue
+                                # impute value, unit, increment i by (an extra) 1 (so it increments by two by end)
+                                mini = float(self.ontology.code_to_bin_ranges[code][unit_code][bin_int]["min"])
+                                maxi = float(self.ontology.code_to_bin_ranges[code][unit_code][bin_int]["max"])
+                                event["numeric_value"] = math.expm1((mini+maxi)/2)
+                            
+                            # set unit
+                            event["unit"] = unit_code
+
+                    # consume bin and unit tokens then continue
+                    i += 3
+                    events.append(event)
+                    continue
 
             # add event to events
             events.append(event)
@@ -1022,7 +1080,6 @@ if __name__ == "__main__":
             "numeric_value": row["numeric_value"],
             "text_value": row["text_value"],
             "unit": row["unit"],
-            "event_type": row["event_type"],
             "visit_id": row["visit_id"]
         } for row in pt_rows.collect()
     ]

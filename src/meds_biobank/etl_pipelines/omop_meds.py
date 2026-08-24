@@ -367,7 +367,7 @@ def format_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
-    return events.orderBy("patient_id", "time", "visit_id")
+    return events.orderBy("patient_id", "time", "visit_id") # TODO: bring visit admission to front, visit discharge to end of same timestamp
 
 def create_concept_schema(events, concept, concept_ancestor):
     """

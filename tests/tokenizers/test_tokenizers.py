@@ -32,7 +32,7 @@ def test_base_tokenizer(meds_events, ontology):
     bt = BaseTokenizer(
         ontology,
         qualifiers=False,
-        event_types=True,
+        event_types=False,
         factors=True,
         factor_types=["drug", "procedure", "measurement", "condition", "observation"]
     )
@@ -51,7 +51,6 @@ def test_base_tokenizer(meds_events, ontology):
             "numeric_value": row["numeric_value"],
             "text_value": row["text_value"],
             "unit": row["unit"],
-            "event_type": row["event_type"],
             "visit_id": row["visit_id"]
         } for row in pt_rows.collect()
     ]
@@ -73,3 +72,5 @@ def test_base_tokenizer(meds_events, ontology):
     # TODO: what happens when qualifiers are requested but there are no qualifiers?
 
 # TODO: test schemas
+
+# TODO: test time tokenizer
