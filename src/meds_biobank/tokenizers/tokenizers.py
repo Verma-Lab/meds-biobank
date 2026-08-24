@@ -789,6 +789,9 @@ class TimeTokenizer():
             raise ValueError()
 
 class RolloutTokenizer():
+
+    # TODO: rework entirely, as factors could be codes and this gets confused. add beginning of event token.
+
     def __init__(self, tokenizer, qualfiers=False, event_types=False, factors=True):
         
         # make sure fields have proper types and settings

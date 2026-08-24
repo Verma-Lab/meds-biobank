@@ -1,10 +1,34 @@
 import pyspark.sql.functions as F
 from pyspark.sql import Window
+from pyspark.sql import DataFrame
+from pyspark.testing import assertSchemaEqual
+from meds_biobank import concepts, schemas
 import json
 import os
 
 class Ontology():
+    """
+    Fields:
+        1. symbol sets (read)
+            - codes
+            - factors
+            - event_types
+            - qualifiers
+            - bins
+            - units
 
+        2. code metadata maps (read)
+            - code_to_event_type
+            - code_to_factors
+            - code_to_name
+            - code_to_qualifiers
+            - code_to_unit
+
+        3. special structures (build)
+            - code_to_bin_ranges
+            - rollup_maps
+            - common_text_values
+    """
     def __init__(self):
         self.codes = None
         self.factors = None
@@ -18,29 +42,37 @@ class Ontology():
         self.code_to_factors = None
         self.code_to_unit = None
         self.code_to_bin_ranges = None
-        self.rollup_map = {}
+        self.rollup_map = None
+        self.common_text_values = None
 
     def compute_concept_ontology(self, events, concept_schema, qualifiers=None):
         """
         Args:
-            events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-            concept_schema (pyspark.sql.DataFrame): |code|name|ancestors
-            qualifications (pyspark.sql.DataFrame): |code|qualifier|source|
+            events (pyspark.sql.DataFrame)
+            concept_schema (pyspark.sql.DataFrame)
+            qualifications (pyspark.sql.DataFrame)
         Compute/Set:
-            - codes <List<code>>
-            - event_types <List<event_type>>
-            - qualifiers <List<qualifier>>
-            - bins <List<bin>>
-            - units <List<unit>>
-            - code_to_event_type <Map<code, event_type>>
-            - code_to_name <Map<code, name>>
-            - code_to_qualifiers <Map<code, wualifier>>
-            - code_to_unit <Map<code, unit>>
+
+            1. symbol sets (read)
+            - codes
+            - factors
+            - event_types
+            - qualifiers
+            - bins
+            - units
+
+            2. code metadata maps (read)
+            - code_to_event_type
+            - code_to_factors
+            - code_to_name
+            - code_to_qualifiers
+            - code_to_unit
+
         """
 
         # list of structures
         sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"]
-        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit"]
+        maps = ["code_to_event_type", "code_to_factors", "code_to_name", "code_to_qualifiers", "code_to_unit"]
 
         try:
 
@@ -50,28 +82,45 @@ class Ontology():
             for struct in maps:
                 setattr(self, struct, {})
 
-            # build flat lists
+            # create code set
             self.codes = {row["code"] for row in concept_schema.select("code").distinct().collect()}
+
+            # create factor set
             for row in concept_schema.collect():
                 if row["factors"] is not None:
                     self.factors.update(set(row["factors"]))
-            self.event_types = {row["event_type"] for row in events.select("event_type").distinct().collect()}
+                
+            # create event type set
+            self.event_types = {row["event_type"] for row in concept_schema.select("event_type").distinct().collect()}
+
+            # create qualifier set
             if qualifiers is not None:
                 self.qualifiers = {row["qualifier"] for row in qualifiers.select("qualifier").distinct().collect()}
+            
+            # create bin set
             self.bins = {f"bin_{i}" for i in range(11)}
-            self.units = {row["unit"] for row in events.filter(F.col("event_type") == "measurement").select("unit").distinct().collect()}
 
-            # build maps
-            code_to_event_type_df = events.groupBy("code").agg(F.first("event_type").alias("event_type"))
-            self.code_to_event_type = {row["code"]:row["event_type"] for row in code_to_event_type_df.collect()}
+            # create unit set
+            self.units = set()
+            for row in concept_schema.filter(F.col("event_type") == "measurement").collect():
+                if row["units"] is not None:
+                    self.units.update(set(row["units"]))
+
+            # create code to event type map
+            self.code_to_event_type = {row["code"]: row["event_type"] for row in concept_schema.select("code", "event_type").collect()}
+
+            # create code to name map
             self.code_to_name = {row["code"]:row["name"] for row in concept_schema.collect()}
+
+            # create code to qualifiers map
             if qualifiers:
                 code_to_qualifiers_df = qualifiers.groupBy("code").agg(F.collect_set("qualifier").alias("qualifiers"))
                 self.code_to_qualifiers = {row["code"]: list(row["qualifiers"]) for row in code_to_qualifiers_df.collect()}
-            code_to_unit_df = events.filter(F.col("event_type") == "measurement").groupBy("code").agg(F.first("unit").alias("unit"))
-            self.code_to_unit = {row["code"]:row["unit"] for row in code_to_unit_df.collect()}
+            
+            # create code to unit map
+            self.code_to_unit = {row["code"]: list((row["units"] or [])) for row in concept_schema.select("code", "units").collect()}
 
-            # build code_to_factors
+            # create code to factors map
             self.code_to_factors = {row["code"]: list((row["factors"] or [])) for row in concept_schema.select("code", "factors").collect()}
         
         except Exception:
@@ -92,10 +141,14 @@ class Ontology():
         try:
 
             # init map
-            self.code_to_bin_ranges = {}
+            self.code_to_bin_ranges = {} # {mcid: {unit: {bin: {min: x, max: y}}}}
+
+            # infer event type
+            mapping_expr = F.create_map([F.lit(x) for item in self.code_to_event_type.items() for x in item])
+            temp_events = events.withColumn("event_type", mapping_expr[F.col("code")])
 
             # filter to only measurements
-            msmt = events.filter(F.col("event_type") == "measurement")
+            msmt = temp_events.filter(F.col("event_type") == "measurement")
 
             # replace all negative measurements with zero
             msmt = msmt.withColumn(
@@ -113,26 +166,26 @@ class Ontology():
                 F.when(F.col("is_homogeneous"), F.lit(None)).otherwise(F.col("numeric_value"))
             ).drop("is_homogeneous")
 
-            # filter out nulls and zeros
-            msmt = msmt.filter((F.col("numeric_value").isNotNull()) & (F.col("numeric_value") != 0))
+            # filter out nulls values, null units, and zeros
+            msmt = msmt.filter((F.col("numeric_value").isNotNull()) & (F.col("numeric_value") != 0) & (F.col("unit").isNotNull()))
 
             # transform values via log1p
             msmt = msmt.withColumn("numeric_value", F.log1p(F.col("numeric_value")))
 
-            # bucketize
-            w_ntile = Window.partitionBy("code").orderBy("numeric_value")
+            # bucketize by code and unit
+            w_ntile = Window.partitionBy("code", "unit").orderBy("numeric_value")
             msmt = msmt.withColumn("decile_value", F.ntile(10).over(w_ntile))  # 1-10
 
-            # bin: value range mapping, keyed on code+event_type+decile then convert to nested dict domain -> decile -> min/max
+            # bin: value range mapping, keyed on code+unit+decile then convert to nested dict code -> unit -> decile -> min/max
             mapping = (
                 msmt
-                .groupBy("code", "decile_value")
+                .groupBy("code", "unit", "decile_value")
                 .agg(F.min("numeric_value").alias("min_value"), F.max("numeric_value").alias("max_value"))
-                .orderBy("code", "decile_value")
+                .orderBy("code", "unit", "decile_value")
             )
             self.code_to_bin_ranges = {}
             for row in mapping.collect():
-                self.code_to_bin_ranges.setdefault(row["code"], {})[row["decile_value"]] = {
+                self.code_to_bin_ranges.setdefault(row["code"], {}).setdefault(row["unit"], {})[row["decile_value"]] = {
                     "min": row["min_value"],
                     "max": row["max_value"],
                 }
@@ -144,7 +197,48 @@ class Ontology():
             # error
             raise
     
-    def rollup_concepts(self, events, concept_schema, threshold=0.01):
+    def bin_text_values(self, events, top_k=100):
+
+        # type guard
+        if not isinstance(events, DataFrame):
+            raise ValueError()
+
+        # schema guard
+        try:
+            assertSchemaEqual(events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
+        except Exception:
+            raise ValueError
+
+        # wrap function in try catch
+        try:
+
+            # init common text values set
+            self.common_text_values = set()
+
+            # filter for msmt
+            mapping_expr = F.create_map([F.lit(x) for item in self.code_to_event_type.items() for x in item])
+            temp_events = events.withColumn("event_type", mapping_expr[F.col("code")])
+            msmt = temp_events.filter(F.col("event_type") == "measurement")
+
+            # filter for has text value
+            msmt_filt = msmt.filter(F.col("text_value").isNotNull())
+
+            # capture top k most common text values for msmt
+            msmt_ct = msmt_filt.groupBy("text_value").agg(F.count("patient_id").alias("count"))
+            w = Window.orderBy(F.desc("count"))
+            msmt_ranked = msmt_ct.withColumn("rank", F.row_number().over(w))
+            msmt_topk = msmt_ranked.filter(F.col("rank") <= top_k)
+
+            # store top k as common text values
+            self.common_text_values = {row["text_value"] for row in msmt_topk.collect()}
+
+        except Exception:
+
+            # reset common text values set and raise error
+            self.common_text_values = None
+            raise
+    
+    def rollup_concepts(self, events, concept_schema, threshold=0.01, rollup=True):
         """
         Args:
             events (pyspark.sql.DataFrame): |patient_id|code|time|end|numeric_value|text_value|decile_value|unit|event_type|visit_id|
@@ -153,18 +247,28 @@ class Ontology():
         """
 
         try:
+
             # re-init map
             self.rollup_map = {}
 
+            # map codes to event types
+            mapping_expr = F.create_map([F.lit(x) for item in self.code_to_event_type.items() for x in item])
+            temp_events = events.withColumn("event_type", mapping_expr[F.col("code")])
+
             # count frequency of every occurent concept wrt patient id
-            cf = events.filter(F.col("event_type") != "measurement").groupBy("code").agg((F.countDistinct("patient_id") / events.select("patient_id").distinct().count()).alias("prop")) # code, prop (percent of patients with this code)
+            cf = temp_events.filter(F.col("event_type") != "measurement").groupBy("code").agg((F.countDistinct("patient_id") / events.select("patient_id").distinct().count()).alias("prop")) # code, prop (percent of patients with this code)
 
             # get list of concepts that are below threshold: these will be dropped from the ontology
             below_thresh = [row["code"] for row in cf.filter(F.col("prop") < threshold).select("code").collect()]
 
             # drop code from codes if below thresh (remains in other ontology fields)
             for bt in below_thresh:
-                self.codes.discard(bt)
+                if (bt != concepts.OMOP_BIRTH) and (bt != concepts.OMOP_DEATH): # make sure OMOP_BIRTH, OMOP_DEATH do not get deleted
+                    self.codes.discard(bt)
+            
+            # skip the next part if rollup is not selected
+            if not rollup:
+                return
 
             # explode concept schema to have unique row for each code, ancestor
             cs_exp = concept_schema.select(
@@ -176,9 +280,7 @@ class Ontology():
                 F.col("pair.min_levels_of_separation").alias("distance")
             ) # code, ancestor, distance
 
-            # build df of code, code_prop, ancestor, ancestor_prop, distance via joining code proportions
-            # (project cf into two distinctly-named frames first, rather than joining
-            # the same cf object into cs_exp twice, to avoid an ambiguous self-join)
+            # build df of code, code_prop, ancestor, ancestor_prop, distance
             code_freq = cf.select(F.col("code"), F.col("prop").alias("code_prop"))
             ancestor_freq = cf.select(F.col("code").alias("ancestor"), F.col("prop").alias("ancestor_prop"))
             cs_exp = cs_exp.join(code_freq, on="code", how="inner")
@@ -194,11 +296,15 @@ class Ontology():
             cs_exp = cs_exp.withColumn("rank", F.row_number().over(rank_w))
             cs_exp = cs_exp.filter(F.col("rank") == 1).drop("rank")
             self.rollup_map = {row["code"]: row["ancestor"] for row in cs_exp.collect()}
+
+            # make sure OMOP BIRTH, OMOP DEATH do not get rolled up
+            self.rollup_map.pop(concepts.OMOP_BIRTH, None)
+            self.rollup_map.pop(concepts.OMOP_DEATH, None)
         
         except Exception:
 
             # re-init map
-            self.rollup_map = {}
+            self.rollup_map = None
             raise
     
     def load_from_disk(self, ontology_data_dir, overwrite=True):
@@ -211,16 +317,12 @@ class Ontology():
             raise Exception(f"Error: ontologies.load_from_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"]
+        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units", "common_text_values"]
         maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit", "code_to_bin_ranges", "rollup_map"]
 
         # guard against overwrite false and ontology already read in
         if not overwrite:
             for struct in sets + maps:
-                if struct == "rollup_map":
-                    if getattr(self, struct) != {}:
-                        raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
-                    continue
                 if getattr(self, struct) is not None:
                     raise Exception(f"Error: ontologies.load_from_disk: Overwrite set to False but {struct} already loaded.")
 
@@ -250,7 +352,7 @@ class Ontology():
                 with open(path, "r") as file:
                     raw = json.load(file)
                 if struct == "code_to_bin_ranges":
-                    raw = {int(k): {int(dk): dv for dk, dv in v.items()} for k, v in raw.items()}
+                    raw = {int(code): {unit: {int(decile): mm for decile, mm in deciles.items()} for unit, deciles in units.items()} for code, units in raw.items()}
                 else:
                     raw = {int(k): v for k, v in raw.items()}
                 setattr(self, struct, raw)
@@ -259,15 +361,8 @@ class Ontology():
 
             # deinit sets and maps then raise error
             for struct in sets + maps:
-                if struct == "rollup_map":
-                    setattr(self, struct, {})
-                    continue
                 setattr(self, struct, None)
             raise
-    
-    # TEST: measurements were not rolled up
-    # TEST: every target of rollup map is in self.codes
-
     
     def save_to_disk(self, ontology_data_dir, overwrite=True):
         """
@@ -279,11 +374,8 @@ class Ontology():
             raise Exception(f"Error: ontologies.save_to_disk: Provided ontology_data_dir {ontology_data_dir} does not exist yet.")
 
         # list of structures
-        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units"
-        ]
-        maps = [
-            "code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit", "code_to_bin_ranges", "rollup_map"
-        ]
+        sets = ["codes", "factors", "event_types", "qualifiers", "bins", "units", "common_text_values"]
+        maps = ["code_to_event_type", "code_to_name", "code_to_qualifiers", "code_to_factors", "code_to_unit", "code_to_bin_ranges", "rollup_map"]
 
         # guard against one of the ontology fields is None
         for struct in sets + maps:
@@ -341,6 +433,7 @@ if __name__ == "__main__":
     ontology = Ontology()
     ontology.compute_concept_ontology(events, concept_schema)
     ontology.bin_measurements(events)
+    ontology.bin_text_values(events)
     ontology.rollup_concepts(events, concept_schema)
     ontology.save_to_disk(str(ontology_data_dir), overwrite=True)
 

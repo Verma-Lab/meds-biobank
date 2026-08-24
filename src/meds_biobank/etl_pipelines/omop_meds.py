@@ -513,6 +513,9 @@ def create_concept_schema(events, concept, concept_ancestor):
     code_to_unit = events.groupBy("code").agg(F.collect_list("unit").alias("units"))
     cn = cn.join(code_to_unit, "code", "left")
 
+    # lowercase domain
+    cn = cn.withColumn("event_type", F.lower("event_type"))
+
     # enforce the declared schema exactly
     cn = cn.select(*[f.name for f in schemas.MEDS_CONCEPT_SCHEMA.fields])
     cn = cn.sparkSession.createDataFrame(cn.rdd, schema=schemas.MEDS_CONCEPT_SCHEMA)

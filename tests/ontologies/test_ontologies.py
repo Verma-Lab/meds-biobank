@@ -2,6 +2,7 @@ import pytest
 from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
 from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema
 from meds_biobank.ontologies.ontologies import Ontology
+from meds_biobank import schemas
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -34,6 +35,7 @@ def test_ontologies(spark, meds_events, meds_concept_schema):
     ontology = Ontology()
     ontology.compute_concept_ontology(meds_events, meds_concept_schema)
     ontology.bin_measurements(meds_events)
+    ontology.bin_text_values(meds_events)
     ontology.rollup_concepts(meds_events, meds_concept_schema, threshold=0.05)
 
     # test fields are not none

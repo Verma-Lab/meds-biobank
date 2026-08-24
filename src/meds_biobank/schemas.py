@@ -271,3 +271,9 @@ MEDS_TASK_SCHEMA = StructType([
     StructField("label", StringType(), False),
     StructField("split", StringType(), False) # train/val/test
 ])
+
+MEDS_QUALIFICATION_SCHEMA = StructType([
+    StructField("code", IntegerType(), False),
+    StructField("qualifier", StringType(), False),
+    StructField("source", StringType(), False)
+])
