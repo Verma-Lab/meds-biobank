@@ -502,12 +502,12 @@ class TimeTokenizer():
                 self.base_tokenizer.next_id += 1
         
         # add approximate time bins if approximate time passage method chosen
-        elif self.time_passage == "approximate":
-            time_symbols = ["minutes_5-minutes_15", "minutes_15-hours_1", "hours_1-hours_2", "hours_2-hours_6", "hours_6-hours_12", "hours_12-days_1", "days_1-days_3", "days_3-weeks_1", "weeks_1-weeks_2", "weeks_2-months_1", "months_1-monnths_3", "months_3-months_6", "months_6"]
+        elif self.method == "approximate":
+            time_symbols = ["minutes_5-minutes_15", "minutes_15-hours_1", "hours_1-hours_2", "hours_2-hours_6", "hours_6-hours_12", "hours_12-days_1", "days_1-days_3", "days_3-weeks_1", "weeks_1-weeks_2", "weeks_2-months_1", "months_1-months_3", "months_3-months_6", "months_6"]
             for symb in time_symbols:
                 self.time_symbols.add(symb)
                 self.base_tokenizer.symbols.add(symb)
-                self.base_tokenizer.symbol_to_ids[symb] = self.ontology.next_id
+                self.base_tokenizer.symbol_to_id[symb] = self.base_tokenizer.next_id
                 self.base_tokenizer.id_to_symbol[self.base_tokenizer.next_id] = symb
                 self.base_tokenizer.next_id += 1
     
@@ -539,22 +539,23 @@ class TimeTokenizer():
         """
 
         # compute base tokens
-        temp_tokens = self.base_tokenizer.tokenize()
+        temp_tokens = self.base_tokenizer.tokenize(events)
 
         # inject time tokens into code tokens based on chosen method
         tokens = {
-            "codes": []
+            "codes": [],
+            "visit_ids": []
         }
-        if self.qualifiers:
+        if self.base_tokenizer.qualifiers:
             tokens["qualifiers"] = []
-        if self.event_types:
+        if self.base_tokenizer.event_types:
             tokens["event_types"] = []
-        if self.factors:
+        if self.base_tokenizer.factors:
             tokens["factors"] = []
-        
+
         # hold last time
         last_time = None
-        
+
         # iterate through original token structure
         for i in range(len(temp_tokens["codes"])):
 
@@ -565,27 +566,29 @@ class TimeTokenizer():
                 time_passage = temp_tokens["times"][i] - last_time
 
                 # compute time tokens
-                time_tokens = self.tokenize_time_diff(time_diff)
+                time_tokens = self.tokenize_time_diff(time_passage)
 
                 # if there are any time tokens, insert into codes and rollout metadata
                 if len(time_tokens) > 0:
-                    for i, tok in enumerate(time_tokens):
+                    for tok in time_tokens:
                         tokens["codes"].append(tok)
-                        if self.qualifiers:
+                        tokens["visit_ids"].append(None)
+                        if self.base_tokenizer.qualifiers:
                             tokens["qualifiers"].append(None)
-                        if self.event_types:
+                        if self.base_tokenizer.event_types:
                             tokens["event_types"].append(None)
-                        if self.factors:
+                        if self.base_tokenizer.factors:
                             tokens["factors"].append(None)
             last_time = temp_tokens["times"][i]
 
             # copy code, metadata
             tokens["codes"].append(temp_tokens["codes"][i])
-            if self.qualifiers:
+            tokens["visit_ids"].append(temp_tokens["visit_ids"][i])
+            if self.base_tokenizer.qualifiers:
                 tokens["qualifiers"].append(temp_tokens["qualifiers"][i])
-            if self.event_types:
+            if self.base_tokenizer.event_types:
                 tokens["event_types"].append(temp_tokens["event_types"][i])
-            if self.factors:
+            if self.base_tokenizer.factors:
                 tokens["factors"].append(temp_tokens["factors"][i])
 
         return tokens
@@ -618,20 +621,23 @@ class TimeTokenizer():
         """
         
         # use injected time tokens to assign times to basic events
-        start_time = datetime.fromtimestamp(0, tz=timezone.utc) # 1970-01-01 00:00:00+00:00
+        start_time = datetime(1970, 1, 1) # naive, matching the original (tz-less) event times
         temp_tokens = {
             "codes": [],
             "times": [],
         }
-        if self.qualifiers:
+        if self.base_tokenizer.qualifiers:
             temp_tokens["qualifiers"] = []
-        if self.event_types:
+        if self.base_tokenizer.event_types:
             temp_tokens["event_types"] = []
-        if self.factors:
+        if self.base_tokenizer.factors:
             temp_tokens["factors"] = []
-        
+
         # init var to store growing time token list
         temp_time_tokens = []
+
+        # track the running current time across iterations
+        last_time = start_time
 
         # iterate through codes
         for i in range(len(tokens["codes"])):
@@ -644,11 +650,11 @@ class TimeTokenizer():
             if (code == "BOS"):
                 temp_tokens["codes"].append(code_token)
                 temp_tokens["times"].append(None)
-                if self.qualifiers:
+                if self.base_tokenizer.qualifiers:
                     temp_tokens["qualifiers"].append(None)
-                if self.event_types:
+                if self.base_tokenizer.event_types:
                     temp_tokens["event_types"].append(None)
-                if self.factors:
+                if self.base_tokenizer.factors:
                     temp_tokens["factors"].append(None)
             
             # handle time symbol
@@ -661,11 +667,8 @@ class TimeTokenizer():
                 # save code
                 temp_tokens["codes"].append(code_token)
 
-                # compute previous time
-                previous_time = (None or start_time)
-
                 # if we have built up time tokens to detokenize, detokenize and add time to last available to get current time
-                if len(temp_time_symbols) > 0:
+                if len(temp_time_tokens) > 0:
 
                     # compute time passage
                     tdelt = self.detokenize_time_diff(temp_time_tokens)
@@ -674,26 +677,29 @@ class TimeTokenizer():
                     temp_time_tokens = []
 
                     # get current time
-                    current_time = previous_time + tdelt
-                
+                    current_time = last_time + tdelt
+
                 # otherwise, propagate previous time
                 else:
-                    current_time = previous_time
-                
+                    current_time = last_time
+
                 # set time of token
                 temp_tokens["times"].append(current_time)
 
+                # update running current time
+                last_time = current_time
+
                 # save metadata
-                if self.qualifiers:
+                if self.base_tokenizer.qualifiers:
                     temp_tokens["qualifiers"].append(tokens["qualifiers"][i])
-                if self.event_types:
+                if self.base_tokenizer.event_types:
                     temp_tokens["event_types"].append(tokens["event_types"][i])
-                if self.factors:
+                if self.base_tokenizer.factors:
                     temp_tokens["factors"].append(tokens["factors"][i])
 
         return self.base_tokenizer.detokenize(temp_tokens)
     
-    def tokenize_time_diff(self, time_diff, floor="minutes_5", cieling="years_10"):
+    def tokenize_time_diff(self, time_diff, floor="minutes_5", cieling="years_99"):
         """
         Args:
             time_diff (timedelta): ...
@@ -709,7 +715,7 @@ class TimeTokenizer():
         
         # if time_diff larger than cieling, cap it
         cieling_tdelt = self.code_to_tdelt(cieling)
-        too_long = (cieling_tdelt < time_dff)
+        too_long = (cieling_tdelt < time_diff)
         if too_long:
             time_diff = cieling_tdelt
 
@@ -721,15 +727,15 @@ class TimeTokenizer():
             years = int((total_days - (total_days % 365)) / 365)
 
             # compute num weeks from leftover days
-            leftover_days = total_days - years * 356
+            leftover_days = total_days - years * 365
             weeks = int((leftover_days - (leftover_days % 7)) / 7)
 
             # compute num days from leftover days
             days = leftover_days - weeks * 7
 
-            # read hours, minutes directly
-            hours = time_diff.hours
-            minutes = time_diff.minutes
+            # derive hours, minutes from the leftover seconds (timedelta has no .hours/.minutes)
+            hours = time_diff.seconds // 3600
+            minutes = (time_diff.seconds % 3600) // 60
 
             # form string codes
             years_code = f"years_{years}"
@@ -748,13 +754,15 @@ class TimeTokenizer():
         # if approximate method is chosen
         elif self.method == "approximate":
 
-            # attempt to locate the bin for the time symbol
+            # attempt to locate the bin for the time symbol ("months_6" is an open-ended bucket, not a range, handled separately below)
             for tsymb in self.time_symbols:
+                if tsymb == "months_6":
+                    continue
                 lower_code, upper_code = tsymb.split("-")
                 lower_tdelt = self.code_to_tdelt(lower_code)
                 upper_tdelt = self.code_to_tdelt(upper_code)
                 if (lower_tdelt <= time_diff and time_diff < upper_tdelt):
-                    return self.ontology.symbol_to_id[tsymb]
+                    return [self.base_tokenizer.symbol_to_id[tsymb]]
 
             # if we no bin is located, approximate the time with 6 mo tokens and return list
             time_tokens = []
@@ -762,10 +770,10 @@ class TimeTokenizer():
             sixmo = timedelta(days=(30.5*6))
             while temp_time_diff > sixmo:
                 temp_time_diff -= sixmo
-                time_tokens.append(self.ontology.symbol_to_id["=months_6"])
+                time_tokens.append(self.base_tokenizer.symbol_to_id["months_6"])
             threemo = timedelta(days=(30.5*3))
             if time_diff > threemo:
-                time_tokens.append(self.ontology.symbol_to_id["=months_6"])
+                time_tokens.append(self.base_tokenizer.symbol_to_id["months_6"])
             return time_tokens
         else:
             raise ValueError(f"TimeTokenizer.tokenize_time_diff(): invalid time passage method {self.method} recieved. How did we get here? This should have been caught by __init__().")
@@ -786,7 +794,7 @@ class TimeTokenizer():
         time_codes = [self.base_tokenizer.id_to_symbol[token] for token in time_tokens]
 
         # handle exact conversion
-        if method == "exact":
+        if self.method == "exact":
 
             # init time diff to 0
             time_diff = timedelta(days=0)
@@ -795,13 +803,15 @@ class TimeTokenizer():
             for tc in time_codes:
                 time_diff += self.code_to_tdelt(tc)
             return time_diff
-        
+
         # handle approxiumate method
-        elif method == "approximate":
+        elif self.method == "approximate":
 
             # if the time token consists of a single range token
             if len(time_codes) == 1:
                 time_code = time_codes[0]
+                if time_code == "months_6":
+                    return self.code_to_tdelt(time_code)
                 lower, upper = time_code.split("-")
                 lower_tdelt = self.code_to_tdelt(lower)
                 upper_tdelt = self.code_to_tdelt(upper)
@@ -828,7 +838,7 @@ class TimeTokenizer():
         # convert code to timedelta
         unit, magnitude = code.split("_")
         try:
-            maginitude = int(magnitude)
+            magnitude = int(magnitude)
         except:
             raise ValueError()
         if unit == "minutes":
@@ -1091,10 +1101,25 @@ if __name__ == "__main__":
     # tokenize the patient
     tokens = bt.tokenize(events)
     for i in range(len(tokens["codes"])):
-        print(f"|{tokens['codes'][i]}|{tokens['times'][i]}|{tokens['event_types'][i]}|{tokens['factors'][i]}|")
+        print(f"|{tokens['codes'][i]}|{tokens['times'][i]}|{tokens['visit_ids'][i]}|{tokens['event_types'][i]}|{tokens['factors'][i]}|")
 
     # detokenize the patient
     decoded_events = bt.detokenize(tokens)
     for event in decoded_events:
+        print(event)
+        print("-"*80)
+
+    # create time tokenizer
+    tt = TimeTokenizer(bt, method="exact")
+    tt.augment_vocab()
+
+    # tokenize the patient with time tokens injected
+    time_tokens = tt.tokenize(events)
+    for i in range(len(time_tokens["codes"])):
+        print(f"|{time_tokens['codes'][i]}|{time_tokens['visit_ids'][i]}|{time_tokens['event_types'][i]}|{time_tokens['factors'][i]}|")
+
+    # try to round trip via time tokenizer detokenize
+    time_decoded_events = tt.detokenize(time_tokens)
+    for event in time_decoded_events:
         print(event)
         print("-"*80)
