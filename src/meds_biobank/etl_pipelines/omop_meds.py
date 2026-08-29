@@ -532,8 +532,37 @@ def extract_tasks(
     observation,
     person,
     procedure_occurrence,
-    visit_occurrence
+    visit_occurrence,
+    splits
 ):
+
+    # # #
+    # TODO: extract administrative tasks
+    # # #
+
+    # TODO: length of stay
+
+    # TODO: 30-day readmission
+
+    # # #
+    # TODO: extract condition onset tasks
+    # # #
+
+    # TODO: sepsis
+
+    # TODO: diabetes
+
+    # TODO: heart failure
+
+    # TODO: sudden cardiac death
+
+    # TODO: extract phenotyping tasks
+
+    # # #
+    # TODO: extract response tasks
+    # # #
+
+    # TODO: medication adverse response
     pass
 
 def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):

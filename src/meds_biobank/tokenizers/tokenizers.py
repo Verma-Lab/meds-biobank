@@ -858,179 +858,298 @@ class TimeTokenizer():
 
 class RolloutTokenizer():
 
-    # TODO: rework entirely, as factors could be codes and this gets confused. add beginning of event token.
+    def __init__(self, tokenizer, qualifiers=False, event_types=False, factors=True):
 
-    def __init__(self, tokenizer, qualfiers=False, event_types=False, factors=True):
-        
         # make sure fields have proper types and settings
         if not isinstance(tokenizer, BaseTokenizer) and not isinstance(tokenizer, TimeTokenizer):
-            raise ValueError()
+            raise ValueError("RolloutTokenizer.__init__(): tokenizer must be a BaseTokenizer or a TimeTokenizer.")
         if not (qualifiers or event_types or factors):
-            raise ValueError()
-        
-        # make sure base tokenizer is properly initialized
+            raise ValueError("RolloutTokenizer.__init__(): at least one of qualifiers, event_types, or factors must be requested.")
+
+        # make sure base tokenizer is properly initialized, and resolve the underlying BaseTokenizer either way
         if isinstance(tokenizer, TimeTokenizer):
             if tokenizer.time_symbols is None:
-                raise ValueError()
+                raise ValueError("RolloutTokenizer.__init__(): tokenizer.time_symbols is not initialized. Did you run TimeTokenizer.augment_vocab() yet?")
             if None in (tokenizer.base_tokenizer.symbols, tokenizer.base_tokenizer.symbol_to_id, tokenizer.base_tokenizer.id_to_symbol):
-                raise ValueError()
-        if isinstance(tokenizer, BaseTokenizer):
+                raise ValueError("RolloutTokenizer.__init__(): tokenizer.base_tokenizer does not have its symbol vocabulary built yet.")
+            base_tokenizer = tokenizer.base_tokenizer
+        else:
             if None in (tokenizer.symbols, tokenizer.symbol_to_id, tokenizer.id_to_symbol):
-                raise ValueError()
-        
+                raise ValueError("RolloutTokenizer.__init__(): tokenizer does not have its symbol vocabulary built yet.")
+            base_tokenizer = tokenizer
+
+        # make sure requested rollout fields are actually available on the underlying tokenizer
+        if qualifiers and not base_tokenizer.qualifiers:
+            raise ValueError("RolloutTokenizer.__init__(): qualifiers requested but the underlying tokenizer was not built with qualifiers=True.")
+        if event_types and not base_tokenizer.event_types:
+            raise ValueError("RolloutTokenizer.__init__(): event_types requested but the underlying tokenizer was not built with event_types=True.")
+        if factors and not base_tokenizer.factors:
+            raise ValueError("RolloutTokenizer.__init__(): factors requested but the underlying tokenizer was not built with factors=True.")
+
         # init fields
         self.tokenizer = tokenizer
+        self.base_tokenizer = base_tokenizer
         self.qualifiers = qualifiers
         self.event_types = event_types
         self.factors = factors
-    
-    def tokenize(events):
 
-        # if tokenizer is a base tokenizer, times is full (although time for BOS will be none), but if not, then there are not times
-        
-        # compute base tokens
+    def _is_value_symbol(self, symbol):
+        # a value/unit/text-value symbol is one that can only ever follow a code, never start an event
+        ont = self.base_tokenizer.ontology
+        return (symbol in ont.bins) or (symbol in ont.units) or (symbol in ont.common_text_values)
+
+    def tokenize(self, events):
+        """
+        Args:
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
+        Returns:
+            tokens (Dict):
+                Description:
+                    fully unrolled token sequence, one BOE-delimited group per event: BOE, event_type, qualifier(s), factor(s), code, value token(s), with time tokens interleaved between event groups when wrapping a TimeTokenizer
+                Schema:
+                    codes (List<int>): fully unrolled token sequence
+                    times (List<datetime>): only present when wrapping a plain BaseTokenizer, aligned to codes
+                    visit_ids (List<int>): aligned to codes, None for time tokens
+        """
+
+        # compute underlying (base or time-augmented) tokens
         base_tokens = self.tokenizer.tokenize(events)
+        is_time_wrapped = isinstance(self.tokenizer, TimeTokenizer)
+        has_times = "times" in base_tokens
 
-        # rollout requested fields
-        unrolled_tokens = {
-            "tokens": []
-        }
-        if "times" in events:
-            unrolled_tokens["times"] = []
-        for i in range(len(events["codes"])):
+        # init output structure
+        tokens = {"codes": [], "visit_ids": []}
+        if has_times:
+            tokens["times"] = []
 
-            # if there is a time, capture it and associate with all unrolled tokens (going forward)
-            if "times" in events:
-                curr_time = events["times"][i]
+        # register length of codes (tokens) from the underlying tokenizer
+        n = len(base_tokens["codes"])
 
-            # if user requested event types, insert into sequence
-            if self.event_types:
-                event_type_token == events["event_types"][i]
-                if event_type_token is not None:
-                    unrolled_tokens["tokens"].append(event_type_token)
-                    if "times" in events:
-                        unrolled_tokens["times"].append(curr_time)
-
-            # if user requested quals, insert into sequence
-            if self.qualifiers:
-                qualifier_tokens = events["qualifiers"][i]
-                if qualifier_tokens is not None:
-                    if len(qualifier_tokens) > 0:
-                        unrolled_tokens["codes"].extend(qualifier_tokens)
-                        if "times" in events:
-                            unrolled_tokens["times"].extend([curr_time for i in range(len(qualifier_tokens))])
-
-            # if there are requested factors, insert them into sequence
-            if self.factors:
-                factor_tokens = events["factors"][i]
-                if factor_tokens is not None:
-                    if len(factor_tokens) > 0:
-                        unrolled_tokens["codes"].extend(factor_tokens)
-                        if "times" in events:
-                            unrolled_tokens["times"].extend([curr_time for i in range(len(factor_tokens))])
-
-            # insert the actual code and time
-            unrolled_tokens["codes"].append(events["codes"][i])
-            if "times" in events:
-                unrolled_tokens["times"].append(curr_time)
-
-        return unrolled_tokens
-    
-    def detokenize(tokens):
-
-        # tokens will have fields: "codes", and optionally "times" (almost all non-na)
-
-        # roll requested fields
-        rolled_tokens = {
-            "codes": []
-        }
-        if "times" in tokens:
-            rolled_tokens["times"] = []
-        if self.event_types:
-            rolled_tokens["event_types"] = []
-        if self.qualifiers:
-            rolled_tokens["qualifiers"] = []
-        if self.factors:
-            rolled_tokens["factors"] = []
-        
-        # init loop var
+        # begin counter
         i = 0
 
-        # iterate through codes
-        while i < range(len(tokens["codes"])):
+        # iterate through the underlying tokenizer's code tokens
+        while i < n:
 
-            # extract token and associated code
-            token = tokens["codes"][i]
-            code = self.tokenizer.id_to_symbol[token]
+            # extract symbol at current position
+            symbol = self.base_tokenizer.id_to_symbol[base_tokens["codes"][i]]
 
-            # extract time if requested
-            if "times" in tokens:
-                curr_time = tokens["times"][i]
-            
-            # process event type token
-            if self.event_types:
-                if code in self.tokenizer.ontology.event_types:
-                    rolled_tokens["event_types"].append(token)
-                    i += 1
-                    continue
-            
-            # process qualifier tokens and consume stretch
-            if self.qualifiers:
-                if code in self.tokenizer.ontology.qualifiers:
-                    qualifier_tokens = []
-                    while code in self.tokenizer.ontology.qualifiers:
-                        qualifier_tokens.append(token)
-                        i += 1
-                        token = tokens["codes"][i]
-                        code = self.tokenizer.id_to_symbol[token]
-                    rolled_tokens["qualifiers"].append(qualifier_tokens)
-                    continue
-            
-            # process factor tokens and consume stretch
-            if self.factors:
-                if code in self.tokenizer.ontology.factors:
-                    factor_tokens = []
-                    while code in self.tokenizer.ontology.factors:
-                        factor_tokens.append(token)
-                        i += 1
-                        token = tokens["codes"][i]
-                        code = self.tokenizer.id_to_symbol[token]
-                    rolled_tokens["factors"].append(factor_tokens)
-                    continue
-
-            # process primary code and consume stretch, stamp time, and add nones to auxiliary structures
-            if code in self.tokenizer.ontology.codes:
-                rolled_tokens["codes"].append(token)
-                if "times" in tokens:
-                    rolled_tokens["times"].append(tokens["times"][i])
-                num_codes = len(rolled_tokens["codes"])
-                if self.event_types:
-                    while len(rolled_tokens["event_types"]) < num_codes:
-                        rolled_tokens["event_types"].append(None)
-                if self.qualifiers:
-                    while len(rolled_tokens["qualifiers"]) < num_codes:
-                        rolled_tokens["qualifiers"].append(None)
-                if self.factors:
-                    while len(rolled_tokens["factors"]) < num_codes:
-                        rolled_tokens["factors"].append(None)
+            # BOS and time tokens pass through untouched, they are not events
+            if (symbol == "BOS") or (is_time_wrapped and symbol in self.tokenizer.time_symbols):
+                tokens["codes"].append(base_tokens["codes"][i])
+                tokens["visit_ids"].append(base_tokens["visit_ids"][i])
+                if has_times:
+                    tokens["times"].append(base_tokens["times"][i])
                 i += 1
                 continue
-            
-            # process time token(s) if these are present
-            if isinstance(self.tokenizer, TimeTokenizer):
-                if code in self.tokenizer.time_symbols:
-                    rolled_tokens["codes"].append(token)
-                    if self.event_types:
-                        rolled_tokens["event_types"].append(None)
-                    if self.qualifiers:
-                        rolled_tokens["qualifiers"].ppend(None)
-                    if self.factors:
-                        rolled_tokens["factors"].append(None)
-        
-        return self.tokenizer.detokenize(rolled_tokens)
 
-class Textualizer():
-    pass
+            # otherwise this position starts a new event's [code, value?, unit?] group
+            visit_id = base_tokens["visit_ids"][i]
+            event_time = base_tokens["times"][i] if has_times else None
+
+            # emit beginning of event token
+            tokens["codes"].append(self.base_tokenizer.symbol_to_id["BOE"])
+            tokens["visit_ids"].append(visit_id)
+            if has_times:
+                tokens["times"].append(event_time)
+
+            # emit event type token
+            if self.event_types:
+                tokens["codes"].append(base_tokens["event_types"][i])
+                tokens["visit_ids"].append(visit_id)
+                if has_times:
+                    tokens["times"].append(event_time)
+
+            # emit qualifier tokens
+            if self.qualifiers:
+                for qtok in (base_tokens["qualifiers"][i] or []):
+                    tokens["codes"].append(qtok)
+                    tokens["visit_ids"].append(visit_id)
+                    if has_times:
+                        tokens["times"].append(event_time)
+
+            # emit factor tokens
+            if self.factors:
+                for ftok in (base_tokens["factors"][i] or []):
+                    tokens["codes"].append(ftok)
+                    tokens["visit_ids"].append(visit_id)
+                    if has_times:
+                        tokens["times"].append(event_time)
+
+            # emit the primary code token
+            tokens["codes"].append(base_tokens["codes"][i])
+            tokens["visit_ids"].append(visit_id)
+            if has_times:
+                tokens["times"].append(event_time)
+            i += 1
+
+            # emit any trailing value/unit tokens belonging to this event
+            while (i < n) and self._is_value_symbol(self.base_tokenizer.id_to_symbol[base_tokens["codes"][i]]):
+                tokens["codes"].append(base_tokens["codes"][i])
+                tokens["visit_ids"].append(visit_id)
+                if has_times:
+                    tokens["times"].append(event_time)
+                i += 1
+
+        return tokens
+
+    def detokenize(self, tokens):
+        """
+        Args:
+            tokens (Dict):
+                Description:
+                    output of RolloutTokenizer.tokenize()
+                Schema:
+                    codes (List<int>): fully unrolled token sequence
+                    times (List<datetime>): only present when wrapping a plain BaseTokenizer
+                    visit_ids (List<int>): unused for reconstruction, present for symmetry with tokenize()
+        Returns:
+            events (List<Dict>):
+                Description:
+                    events for a single patient
+                Dict Schema:
+                    patient_id: int
+                    code: int
+                    time: datetime
+                    end: datetime/null
+                    numeric_value: float/null
+                    text_value: string/null
+                    unit: string/null
+                    event_type: string
+                    visit_id: int/null
+        """
+
+        # ontology shorthand
+        ont = self.base_tokenizer.ontology
+
+        # is the wrapped tokenizer a TimeTokenizer
+        is_time_wrapped = isinstance(self.tokenizer, TimeTokenizer)
+
+        # register length of codes (tokens)
+        n = len(tokens["codes"])
+
+        # build the underlying tokenizer's expected input structure
+        temp_tokens = {"codes": []}
+        if not is_time_wrapped:
+            temp_tokens["times"] = []
+        if self.base_tokenizer.qualifiers:
+            temp_tokens["qualifiers"] = []
+        if self.base_tokenizer.event_types:
+            temp_tokens["event_types"] = []
+        if self.base_tokenizer.factors:
+            temp_tokens["factors"] = []
+
+        # begin counter
+        i = 0
+
+        # iterate through code tokens
+        while i < n:
+
+            # extract symbol at current position
+            symbol = self.base_tokenizer.id_to_symbol[tokens["codes"][i]]
+
+            # BOS passes straight through
+            if symbol == "BOS":
+                temp_tokens["codes"].append(tokens["codes"][i])
+                if not is_time_wrapped:
+                    temp_tokens["times"].append(None)
+                if self.base_tokenizer.qualifiers:
+                    temp_tokens["qualifiers"].append(None)
+                if self.base_tokenizer.event_types:
+                    temp_tokens["event_types"].append(None)
+                if self.base_tokenizer.factors:
+                    temp_tokens["factors"].append(None)
+                i += 1
+                continue
+
+            # time tokens pass straight through
+            if is_time_wrapped and symbol in self.tokenizer.time_symbols:
+                temp_tokens["codes"].append(tokens["codes"][i])
+                if self.base_tokenizer.qualifiers:
+                    temp_tokens["qualifiers"].append(None)
+                if self.base_tokenizer.event_types:
+                    temp_tokens["event_types"].append(None)
+                if self.base_tokenizer.factors:
+                    temp_tokens["factors"].append(None)
+                i += 1
+                continue
+
+            # anything else must be BOE, marking the start of an event
+            if symbol != "BOE":
+                raise ValueError(f"RolloutTokenizer.detokenize(): expected BOE at position {i} but found {symbol!r}.")
+
+            # capture the event's time, times are implicit in time tokens when time-wrapped
+            event_time = tokens["times"][i] if (not is_time_wrapped) else None
+            i += 1
+
+            # consume the event type token if present
+            event_type_token = None
+            if self.event_types:
+                event_type_token = tokens["codes"][i]
+                i += 1
+
+            # scan forward through qualifiers/factors to find the code, the code is always the last token of this run
+            run_start = i
+            while i < n:
+                next_symbol = self.base_tokenizer.id_to_symbol[tokens["codes"][i]]
+                if self._is_value_symbol(next_symbol) or (next_symbol == "BOE") or (is_time_wrapped and next_symbol in self.tokenizer.time_symbols):
+                    break
+                i += 1
+            if i == run_start:
+                raise ValueError(f"RolloutTokenizer.detokenize(): no code token found for the event starting at BOE position {run_start - 1}.")
+
+            # the code is the last token scanned
+            code_token = tokens["codes"][i - 1]
+            code = self.base_tokenizer.id_to_symbol[code_token]
+
+            # save code and time
+            temp_tokens["codes"].append(code_token)
+            if not is_time_wrapped:
+                temp_tokens["times"].append(event_time)
+
+            # re-derive qualifiers from the ontology, they are a deterministic function of code, not reconstructed from the discarded run tokens
+            if self.base_tokenizer.qualifiers:
+                quals = ont.code_to_qualifiers.get(code, [])
+                temp_tokens["qualifiers"].append([self.base_tokenizer.symbol_to_id[q] for q in quals])
+
+            # re-derive factors from the ontology the same way
+            if self.base_tokenizer.factors:
+                if (ont.code_to_event_type[code] in self.base_tokenizer.factor_types) and (code in ont.code_to_factors):
+                    factor_codes = ont.code_to_factors[code]
+                    temp_tokens["factors"].append([self.base_tokenizer.symbol_to_id[fc] for fc in factor_codes])
+                else:
+                    temp_tokens["factors"].append(None)
+
+            # save event type
+            if self.base_tokenizer.event_types:
+                temp_tokens["event_types"].append(event_type_token)
+
+            # trailing value/unit tokens belong to this event too, pass through untouched
+            while (i < n) and self._is_value_symbol(self.base_tokenizer.id_to_symbol[tokens["codes"][i]]):
+                temp_tokens["codes"].append(tokens["codes"][i])
+                if not is_time_wrapped:
+                    temp_tokens["times"].append(event_time)
+                if self.base_tokenizer.qualifiers:
+                    temp_tokens["qualifiers"].append(None)
+                if self.base_tokenizer.event_types:
+                    temp_tokens["event_types"].append(None)
+                if self.base_tokenizer.factors:
+                    temp_tokens["factors"].append(None)
+                i += 1
+
+        return self.tokenizer.detokenize(temp_tokens)
 
 if __name__ == "__main__":
 
