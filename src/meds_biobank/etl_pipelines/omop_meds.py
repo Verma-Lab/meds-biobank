@@ -544,12 +544,6 @@ def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
     if not isinstance(person, DataFrame):
         raise ValueError()
     
-    # schema guard
-    try:
-        assertSchemaEqual(person.schema, schemas.OMOP_PERSON_SCHEMA, ignoreColumnOrder=True)
-    except:
-        raise ValueError()
-    
     # check percentages are valid
     if abs((train + val + test + task) - 1.0) > 1e-9:
         raise ValueError()
