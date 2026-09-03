@@ -203,12 +203,6 @@ class Ontology():
         if not isinstance(events, DataFrame):
             raise ValueError()
 
-        # schema guard
-        try:
-            assertSchemaEqual(events.schema, schemas.MEDS_EVENT_SCHEMA, ignoreColumnOrder=True)
-        except Exception:
-            raise ValueError
-
         # wrap function in try catch
         try:
 
