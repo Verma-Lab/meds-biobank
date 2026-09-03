@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meds-biobank"
-version = "0.0.351"
+version = "0.0.36"
 authors = [
   { name="Andrew Zolensky", email="andrewlzolensky@gmail.com" },
 ]
