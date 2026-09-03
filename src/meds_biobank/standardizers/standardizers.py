@@ -106,6 +106,48 @@ GROUPINGS = [
     ("vitals_weight", lambda: F.col("ancestor_concept_id") == 40655805, 40655805),
 ]
 
+def standardize_measurement_concept_id_fast(measurement, concept, concept_ancestor):
+    if not isinstance(measurement, DataFrame):
+        raise ValueError()
+    if not isinstance(concept, DataFrame):
+        raise ValueError()
+    if not isinstance(concept_ancestor, DataFrame):
+        raise ValueError()
+
+    base = (
+        measurement
+        .join(concept_ancestor, measurement.measurement_concept_id == concept_ancestor.descendant_concept_id, "left")
+        .join(concept, F.col("descendant_concept_id") == concept.concept_id, "left")
+    )
+
+    measurement_cols = measurement.columns
+
+    match_structs = F.array(*[
+        F.when(
+            predicate(),
+            F.struct(F.lit(i).alias("_grp"), F.lit(std_concept_id).cast("long").alias("concept_id_std"))
+        )
+        for i, (_, predicate, std_concept_id) in enumerate(GROUPINGS)
+    ])
+
+    base_matched = base.withColumn("matches", F.filter(match_structs, lambda x: x.isNotNull()))
+
+    exploded = (
+        base_matched
+        .withColumn("m", F.explode("matches"))
+        .select(*measurement_cols, F.col("m._grp").alias("_grp"), F.col("m.concept_id_std").alias("concept_id_std"))
+        .dropDuplicates(["measurement_id", "_grp"])
+        .drop("_grp")
+    )
+
+    uncovered = measurement.join(
+        exploded.select("measurement_id").distinct(),
+        on="measurement_id",
+        how="left_anti"
+    ).withColumn("concept_id_std", F.col("measurement_concept_id"))
+
+    return exploded.unionByName(uncovered)
+
 
 def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
     """
