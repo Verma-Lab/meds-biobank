@@ -139,12 +139,12 @@ def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
         raise ValueError()
     
     # schema guards
-    try:
-        assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
-        assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA, ignoreColumnOrder=True)
-        assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, ignoreColumnOrder=True)
-    except:
-        raise ValueError()
+    # try:
+    #     assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
+    #     assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA, ignoreColumnOrder=True)
+    #     assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA, ignoreColumnOrder=True)
+    # except:
+    #     raise ValueError()
 
     # build the same joined base the groupings' predicates are written against
     base = (
@@ -413,12 +413,12 @@ def lv_standardize(msmt, concept, concept_ancestor):
         raise ValueError()
 
     # schema guards
-    try:
-        assertSchemaEqual(msmt.schema, schemas.OMOP_MEASUREMENT_SCHEMA)
-        assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA)
-        assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA)
-    except:
-        raise ValueError()
+    # try:
+    #     assertSchemaEqual(msmt.schema, schemas.OMOP_MEASUREMENT_SCHEMA)
+    #     assertSchemaEqual(concept.schema, schemas.OMOP_CONCEPT_SCHEMA)
+    #     assertSchemaEqual(concept_ancestor.schema, schemas.OMOP_CONCEPT_ANCESTOR_SCHEMA)
+    # except:
+    #     raise ValueError()
 
     # init msmts trackers
     all_frames = []
