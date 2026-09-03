@@ -516,9 +516,9 @@ def create_concept_schema(events, concept, concept_ancestor):
     # lowercase domain
     cn = cn.withColumn("event_type", F.lower("event_type"))
 
-    # enforce the declared schema exactly
-    cn = cn.select(*[f.name for f in schemas.MEDS_CONCEPT_SCHEMA.fields])
-    cn = cn.sparkSession.createDataFrame(cn.rdd, schema=schemas.MEDS_CONCEPT_SCHEMA)
+    # TODO: enforce the declared schema exactly
+    # cn = cn.select(*[f.name for f in schemas.MEDS_CONCEPT_SCHEMA.fields])
+    # cn = cn.sparkSession.createDataFrame(cn.rdd, schema=schemas.MEDS_CONCEPT_SCHEMA)
 
     return cn
 
@@ -535,34 +535,7 @@ def extract_tasks(
     visit_occurrence,
     splits
 ):
-
-    # # #
-    # TODO: extract administrative tasks
-    # # #
-
-    # TODO: length of stay
-
-    # TODO: 30-day readmission
-
-    # # #
-    # TODO: extract condition onset tasks
-    # # #
-
-    # TODO: sepsis
-
-    # TODO: diabetes
-
-    # TODO: heart failure
-
-    # TODO: sudden cardiac death
-
-    # TODO: extract phenotyping tasks
-
-    # # #
-    # TODO: extract response tasks
-    # # #
-
-    # TODO: medication adverse response
+    # TODO
     pass
 
 def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
@@ -603,9 +576,9 @@ def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
     # cast person id col
     splits = splits.withColumn("patient_id", F.crc32("person_id")).drop("person_id")
 
-    # cast to meds split schema before returning
-    splits = splits.select(*[f.name for f in schemas.MEDS_SPLIT_SCHEMA.fields])
-    splits = splits.sparkSession.createDataFrame(splits.rdd, schema=schemas.MEDS_SPLIT_SCHEMA)
+    # TODO: cast to meds split schema before returning
+    # splits = splits.select(*[f.name for f in schemas.MEDS_SPLIT_SCHEMA.fields])
+    # splits = splits.sparkSession.createDataFrame(splits.rdd, schema=schemas.MEDS_SPLIT_SCHEMA)
 
     return splits
 
