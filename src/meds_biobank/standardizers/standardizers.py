@@ -106,6 +106,9 @@ GROUPINGS = [
     ("vitals_weight", lambda: F.col("ancestor_concept_id") == 40655805, 40655805),
 ]
 
+# ancestor ids a GROUPINGS predicate tests that differ from its own concept_id_std (labs_esr, labs_ptt) -- keep in sync with GROUPINGS
+_EXTRA_GROUPING_ANCESTOR_IDS = {4028908, 1618784}
+
 def standardize_measurement_concept_id_fast(measurement, concept, concept_ancestor):
     if not isinstance(measurement, DataFrame):
         raise ValueError()
@@ -114,10 +117,17 @@ def standardize_measurement_concept_id_fast(measurement, concept, concept_ancest
     if not isinstance(concept_ancestor, DataFrame):
         raise ValueError()
 
+    # filter concept_ancestor's full transitive closure down to the ids GROUPINGS actually tests, to avoid fanning out every measurement row by its whole ancestry
+    grouping_ancestor_ids = {std_concept_id for _, _, std_concept_id in GROUPINGS} | _EXTRA_GROUPING_ANCESTOR_IDS
+    concept_ancestor_filtered = concept_ancestor.filter(F.col("ancestor_concept_id").isin(grouping_ancestor_ids))
+
+    # concept_name predicates need measurement's own concept even when no ancestor row survives the filter above, so look it up directly instead of through concept_ancestor
+    concept_by_id = concept.select("concept_id", "concept_name")
+
     base = (
         measurement
-        .join(concept_ancestor, measurement.measurement_concept_id == concept_ancestor.descendant_concept_id, "left")
-        .join(concept, F.col("descendant_concept_id") == concept.concept_id, "left")
+        .join(concept_by_id, measurement.measurement_concept_id == concept_by_id.concept_id, "left")
+        .join(concept_ancestor_filtered, measurement.measurement_concept_id == concept_ancestor_filtered.descendant_concept_id, "left")
     )
 
     measurement_cols = measurement.columns
