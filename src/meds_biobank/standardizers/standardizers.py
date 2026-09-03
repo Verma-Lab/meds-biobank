@@ -123,10 +123,7 @@ def standardize_measurement_concept_id_fast(measurement, concept, concept_ancest
     measurement_cols = measurement.columns
 
     match_structs = F.array(*[
-        F.when(
-            predicate(),
-            F.struct(F.lit(i).alias("_grp"), F.lit(std_concept_id).cast("long").alias("concept_id_std"))
-        )
+        F.when(predicate(), F.struct(F.lit(i).alias("_grp"), F.lit(std_concept_id).alias("concept_id_std")))
         for i, (_, predicate, std_concept_id) in enumerate(GROUPINGS)
     ])
 

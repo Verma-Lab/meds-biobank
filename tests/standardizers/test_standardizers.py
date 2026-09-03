@@ -1,4 +1,4 @@
-from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
+from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_measurement_concept_id_fast, standardize_numeric_values_and_units, standardize_text_value
 from meds_biobank import schemas
 import pyspark.sql.functions as F
 from pyspark.sql.types import StringType, IntegerType, DoubleType
@@ -11,7 +11,7 @@ def test_standardizers(spark, measurement, concept, concept_ancestor):
     assertSchemaEqual(measurement.schema, schemas.OMOP_MEASUREMENT_SCHEMA, ignoreColumnOrder=True)
 
     # standardize measurement concept id
-    std = standardize_measurement_concept_id(measurement, concept, concept_ancestor)
+    std = standardize_measurement_concept_id_fast(measurement, concept, concept_ancestor)
 
     # standardize nums and units
     std = standardize_numeric_values_and_units(std)
