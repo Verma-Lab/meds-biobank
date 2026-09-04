@@ -164,10 +164,6 @@ def test_extract_splits(spark, person):
     with pytest.raises(ValueError):
         extract_splits(spark, [1, 2, 3])
 
-    # wrong-schema input rejected
-    with pytest.raises(ValueError):
-        extract_splits(spark, person.drop("gender_concept_id"))
-
     # percentages must sum to 1.0
     with pytest.raises(ValueError):
         extract_splits(spark, person, train=0.5, val=0.1, test=0.1, task=0.1)

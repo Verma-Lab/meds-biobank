@@ -229,6 +229,208 @@ def standardize_measurement_concept_id(measurement, concept, concept_ancestor):
 
     return covered.unionByName(uncovered)
 
+def standardize_numeric_values_and_units_reference(measurement, concept_schema, mcid_standardized=True):
+    """
+    Like standardize_numeric_values_and_units, but instead of picking a per-code target unit
+    from this data's own distribution, matches each measurement against the unit(s) already
+    recorded for its code in concept_schema (from a prior standardization run) and converts
+    onto whichever one is reachable.
+
+    Args:
+        measurement (pyspark.sql.DataFrame): OMOP measurement table, already run through
+            standardize_measurement_concept_id/_fast if mcid_standardized
+        concept_schema (pyspark.sql.DataFrame): MEDS concept schema from a prior
+            standardization run |code|name|ancestors|factors|event_type|units|
+        mcid_standardized (bool): key on concept_id_std (True) or measurement_concept_id (False)
+
+    Returns:
+        pyspark.sql.DataFrame: measurement, plus new numeric_value_std/unit_std columns, set
+            only when the row's unit matches or converts to one of concept_schema's known
+            valid units for its code, null otherwise. The row/code itself is always retained.
+            value_as_number/unit_source_value themselves are untouched.
+    """
+
+    # type guards
+    if not isinstance(measurement, DataFrame):
+        raise ValueError()
+    if not isinstance(concept_schema, DataFrame):
+        raise ValueError()
+
+    if mcid_standardized:
+        cid_col = "concept_id_std"
+    else:
+        cid_col = "measurement_concept_id"
+
+    # map units to canonical value (mirrors standardize_numeric_values_and_units's ladder)
+    unit_lower = F.lower(F.col("unit_source_value"))
+    normalized_unit = (
+        # mass-concentration ladder: mg/dL <-> g/dL <-> g/L <-> mg/L <-> mg/mL
+        F.when(unit_lower.rlike(r'^mg/\s?dl$'), F.lit("mg/dL"))
+        .when(unit_lower.rlike(r'^gm?/dl(\s*\(calc\))?$'), F.lit("g/dL"))
+        .when(unit_lower == "g/l", F.lit("g/L"))
+        .when(unit_lower == "mg/l", F.lit("mg/L"))
+        .when(unit_lower == "mg/ml", F.lit("mg/mL"))
+        # hormone/protein ladder: pg/mL <-> ng/L <-> ng/dL <-> ng/mL
+        .when(unit_lower == "pg/ml", F.lit("pg/mL"))
+        .when(unit_lower == "ng/l", F.lit("ng/L"))
+        .when(unit_lower == "ng/dl", F.lit("ng/dL"))
+        .when(unit_lower == "ng/ml", F.lit("ng/mL"))
+        # microgram ladder: ug/mL <-> ug/dL ("mcg" is a synonym for "ug")
+        .when((unit_lower == "ug/ml") | (unit_lower == "mcg/ml"), F.lit("ug/mL"))
+        .when((unit_lower == "ug/dl") | (unit_lower == "mcg/dl"), F.lit("ug/dL"))
+        .when(unit_lower.like("mcg/mg%"), F.lit("mcg/mg"))
+        # cell-count ladder: Cells/uL <-> Thousand/uL <-> Million/uL
+        .when(
+            unit_lower.like("th%/ul") | unit_lower.like("th%/mcl")
+            | unit_lower.like("%10%3/ul") | unit_lower.like("%10%3/mcl")
+            | unit_lower.rlike(r'^k/[ucm].+$') | unit_lower.rlike(r'^10.3/ul$'),
+            F.lit("Thousand/uL")
+        )
+        .when(unit_lower.rlike(r'^cell.*/[ucm].+$') | (unit_lower == "/ul"), F.lit("Cells/uL"))
+        .when(
+            unit_lower.like("m%/ul") | unit_lower.like("m%/mcl") | unit_lower.like("m%/mm3")
+            | unit_lower.rlike(r'^m.*/cu?mm$') | unit_lower.like("%10%6/ul"),
+            F.lit("Million/uL")
+        )
+        # enzyme/antibody activity units
+        .when(unit_lower == "iu/ml", F.lit("International Units/mL"))
+        .when(
+            unit_lower.rlike(r'^u.?iu.?/ml$') | unit_lower.rlike(r'^mc?i?u.*/l$') | (unit_lower == "mciu/ml"),
+            F.lit("uIU/mL")
+        )
+        .when(unit_lower.rlike(r'^.*i?u.*/l$'), F.lit("Unit/L"))
+        .when(unit_lower == "leu/ul", F.lit("Leu/uL"))
+        # electrolytes / catecholamines
+        .when(unit_lower.like("mmo%/l"), F.lit("mmol/L"))
+        .when(unit_lower == "nmol/l", F.lit("nmol/L"))
+        # misc single-unit families
+        .when(unit_lower == "mmhg", F.lit("mmHg"))
+        .when(unit_lower.like("s%"), F.lit("Second(s)"))
+        .when(F.col("unit_source_value").rlike(r'^%.*$'), F.lit("%"))
+        .when(unit_lower == "counts/min", F.lit("Counts/Min"))
+        .when(unit_lower.like("mm/h%"), F.lit("mm/h"))
+        .when(unit_lower == "kg/m^2", F.lit("kg/m^2"))
+        # anthropometrics (height/weight; temperature intentionally excluded, see note below)
+        .when(unit_lower.like("in%"), F.lit("Inches"))
+        .when(unit_lower == "ft", F.lit("Feet"))
+        .when(unit_lower.like("o%"), F.lit("oz"))
+        .when(unit_lower.like("lb%"), F.lit("lb"))
+        # renal function: eGFR, normalize spacing/suffix variants to one label
+        .when(unit_lower.rlike(r'^ml/min/1\.73\s?m2$') | (unit_lower == "ml/min/1.73"), F.lit("mL/min/1.73m2"))
+        # standalone hematology indices (no ratio partner in this data; identity so repeats don't flag as inconsistent units)
+        .when(unit_lower == "pg", F.lit("pg"))
+        .when(unit_lower == "fl", F.lit("fL"))
+        .when(unit_lower == "/hpf", F.lit("/hpf"))
+        .otherwise(F.col("unit_source_value"))
+    )
+
+    df = measurement.withColumn("unit_norm", normalized_unit)
+
+    # same physical-unit conversion factors as standardize_numeric_values_and_units
+    unit_to_canonical = {
+        # mass-concentration ladder, relative to mg/dL
+        "mg/dL": 1.0,
+        "g/dL": 1000.0,
+        "g/L": 0.01,
+        "mg/L": 0.1,
+        "mg/mL": 100.0,
+        # hormone/protein ladder, relative to pg/mL
+        "pg/mL": 1.0,
+        "ng/L": 1.0,
+        "ng/dL": 10.0,
+        "ng/mL": 1000.0,
+        # microgram ladder, relative to ug/mL
+        "ug/mL": 1.0,
+        "ug/dL": 0.01,
+        # cell-count ladder, relative to Cells/uL
+        "Cells/uL": 1.0,
+        "Thousand/uL": 1000.0,
+        "Million/uL": 1000000.0,
+        # anthropometrics
+        "Inches": 1.0,
+        "Feet": 12.0,
+        "oz": 1.0,
+        "lb": 16.0,
+        # single-unit families: identity, kept so same-unit pairs still resolve via the lookup
+        "Unit/L": 1.0,
+        "International Units/mL": 1.0,
+        "uIU/mL": 1.0,
+        "Leu/uL": 1.0,
+        "mmol/L": 1.0,
+        "nmol/L": 1.0,
+        "mmHg": 1.0,
+        "Second(s)": 1.0,
+        "%": 1.0,
+        "Counts/Min": 1.0,
+        "mm/h": 1.0,
+        "kg/m^2": 1.0,
+        "mcg/mg": 1.0,
+        "mL/min/1.73m2": 1.0,
+        "pg": 1.0,
+        "fL": 1.0,
+        "/hpf": 1.0,
+    }
+    factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
+
+    # which physical-unit family each canonical unit belongs to -- conversion is only valid within the same ladder, since each ladder's 1.0 basepoint is arbitrary and not on a shared scale with the others
+    unit_to_ladder = {
+        "mg/dL": "mass_concentration", "g/dL": "mass_concentration", "g/L": "mass_concentration",
+        "mg/L": "mass_concentration", "mg/mL": "mass_concentration",
+        "pg/mL": "hormone_protein", "ng/L": "hormone_protein", "ng/dL": "hormone_protein", "ng/mL": "hormone_protein",
+        "ug/mL": "microgram", "ug/dL": "microgram",
+        "Cells/uL": "cell_count", "Thousand/uL": "cell_count", "Million/uL": "cell_count",
+        "Inches": "length", "Feet": "length",
+        "oz": "weight", "lb": "weight",
+        # single-unit families have no conversion partner, so each is its own ladder
+        "Unit/L": "Unit/L", "International Units/mL": "International Units/mL", "uIU/mL": "uIU/mL",
+        "Leu/uL": "Leu/uL", "mmol/L": "mmol/L", "nmol/L": "nmol/L", "mmHg": "mmHg", "Second(s)": "Second(s)",
+        "%": "%", "Counts/Min": "Counts/Min", "mm/h": "mm/h", "kg/m^2": "kg/m^2", "mcg/mg": "mcg/mg",
+        "mL/min/1.73m2": "mL/min/1.73m2", "pg": "pg", "fL": "fL", "/hpf": "/hpf",
+    }
+    ladder_map = F.create_map(*[F.lit(x) for kv in unit_to_ladder.items() for x in kv])
+
+    df = df.withColumn("factor_from", factor_map[F.col("unit_norm")])
+    df = df.withColumn("ladder_from", ladder_map[F.col("unit_norm")])
+
+    # one row per (code, valid reference unit) pair this data's codes could match against
+    reference_units = (
+        concept_schema
+        .select(F.col("code").alias("_ref_code"), F.explode("units").alias("_ref_unit"))
+        .withColumn("_ref_factor", factor_map[F.col("_ref_unit")])
+        .withColumn("_ref_ladder", ladder_map[F.col("_ref_unit")])
+    )
+
+    # bring in every candidate reference unit for the row's code, keep only ones actually reachable from unit_norm, and only within the same unit ladder
+    candidates = (
+        df.join(reference_units, F.col(cid_col) == F.col("_ref_code"), "inner")
+        .withColumn("_already_target", F.col("unit_norm") == F.col("_ref_unit"))
+        .filter(F.col("_already_target") | (F.col("factor_from").isNotNull() & F.col("_ref_factor").isNotNull() & (F.col("ladder_from") == F.col("_ref_ladder"))))
+    )
+
+    # a row can reach more than one valid unit (its own spelling plus a convertible one); prefer the exact match, then break ties deterministically
+    rank_w = Window.partitionBy("measurement_id").orderBy(F.desc("_already_target"), F.col("_ref_unit"))
+    matched = (
+        candidates
+        .withColumn("_rank", F.row_number().over(rank_w))
+        .filter(F.col("_rank") == 1)
+        .withColumn(
+            "numeric_value_std",
+            F.when(F.col("_already_target"), F.round(F.col("value_source_value").try_cast("double"), 3))
+             .otherwise(F.round(F.col("value_source_value").try_cast("double") * F.col("factor_from") / F.col("_ref_factor"), 3))
+        )
+        .withColumn("unit_std", F.col("_ref_unit"))
+        .select(*measurement.columns, "numeric_value_std", "unit_std")
+    )
+
+    # codes/rows with no reachable reference unit keep their row but get no value/unit
+    unmatched = (
+        measurement.join(matched.select("measurement_id").distinct(), on="measurement_id", how="left_anti")
+        .withColumn("numeric_value_std", F.lit(None).cast("double"))
+        .withColumn("unit_std", F.lit(None).cast("string"))
+    )
+
+    return matched.unionByName(unmatched)
+
 def standardize_numeric_values_and_units(measurement, mcid_standardized=True):
     """
     Apply unit/value homogenization (or nullification) to measurements by measurement_concept_id.
@@ -368,6 +570,23 @@ def standardize_numeric_values_and_units(measurement, mcid_standardized=True):
     # create map of normalized unit to conversion factor
     factor_map = F.create_map(*[F.lit(x) for kv in unit_to_canonical.items() for x in kv])
 
+    # which physical-unit family each canonical unit belongs to -- conversion is only valid within the same ladder, since each ladder's 1.0 basepoint is arbitrary and not on a shared scale with the others
+    unit_to_ladder = {
+        "mg/dL": "mass_concentration", "g/dL": "mass_concentration", "g/L": "mass_concentration",
+        "mg/L": "mass_concentration", "mg/mL": "mass_concentration",
+        "pg/mL": "hormone_protein", "ng/L": "hormone_protein", "ng/dL": "hormone_protein", "ng/mL": "hormone_protein",
+        "ug/mL": "microgram", "ug/dL": "microgram",
+        "Cells/uL": "cell_count", "Thousand/uL": "cell_count", "Million/uL": "cell_count",
+        "Inches": "length", "Feet": "length",
+        "oz": "weight", "lb": "weight",
+        # single-unit families have no conversion partner, so each is its own ladder
+        "Unit/L": "Unit/L", "International Units/mL": "International Units/mL", "uIU/mL": "uIU/mL",
+        "Leu/uL": "Leu/uL", "mmol/L": "mmol/L", "nmol/L": "nmol/L", "mmHg": "mmHg", "Second(s)": "Second(s)",
+        "%": "%", "Counts/Min": "Counts/Min", "mm/h": "mm/h", "kg/m^2": "kg/m^2", "mcg/mg": "mcg/mg",
+        "mL/min/1.73m2": "mL/min/1.73m2", "pg": "pg", "fL": "fL", "/hpf": "/hpf",
+    }
+    ladder_map = F.create_map(*[F.lit(x) for kv in unit_to_ladder.items() for x in kv])
+
     # compute the target unit for each row of measurements
     pair_w = Window.partitionBy(cid_col, "unit_norm")
     df = df.withColumn("pair_count", F.count("*").over(pair_w))
@@ -384,8 +603,11 @@ def standardize_numeric_values_and_units(measurement, mcid_standardized=True):
     # perform unit and value conversion for non-mode units
     df = df.withColumn("factor_from", factor_map[F.col("unit_norm")])
     df = df.withColumn("factor_to", factor_map[F.col("target_unit")])
+    df = df.withColumn("ladder_from", ladder_map[F.col("unit_norm")])
+    df = df.withColumn("ladder_to", ladder_map[F.col("target_unit")])
     already_target = F.col("unit_norm") == F.col("target_unit")
-    convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull()
+    # ladders' 1.0 basepoints aren't on a shared scale, so a factor lookup hit on both sides isn't enough -- require same ladder too
+    convertible = F.col("factor_from").isNotNull() & F.col("factor_to").isNotNull() & (F.col("ladder_from") == F.col("ladder_to"))
     success = already_target | convertible
     value_num = F.col("value_source_value").try_cast("double")
     df = df.withColumn(
@@ -403,7 +625,9 @@ def standardize_numeric_values_and_units(measurement, mcid_standardized=True):
     # unit_source_value are left untouched -- these are new columns, not overwrites.
     df = df.withColumnRenamed("value_std", "numeric_value_std")
 
-    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to", "unit_norm", "target_unit")
+    return df.drop("pair_count", "unit_rank", "factor_from", "factor_to", "ladder_from", "ladder_to", "unit_norm", "target_unit")
+
+
 
 def standardize_text_value(measurement):
     """

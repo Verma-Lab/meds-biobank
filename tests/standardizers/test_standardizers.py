@@ -58,6 +58,28 @@ def test_text_standardizers(spark, measurement):
     std_msmt_ids = std.select("measurement_id").distinct()
     assert (all_msmt_ids.count() == std_msmt_ids.count())
 
+def test_unit_ladder_not_crossed(spark):
+    # same measurement_concept_id, majority in mmol/L, one row in Unit/L -- both map to
+    # canonical factor 1.0 in the flat conversion table despite being unrelated units
+    rows = [
+        (1, 999, "5.0", "mmol/L"),
+        (2, 999, "5.1", "mmol/L"),
+        (3, 999, "4.9", "mmol/L"),
+        (4, 999, "10.0", "Unit/L"),
+    ]
+    df = spark.createDataFrame(rows, ["measurement_id", "measurement_concept_id", "value_source_value", "unit_source_value"])
+
+    std = standardize_numeric_values_and_units(df, mcid_standardized=False)
+
+    # the Unit/L row must not be silently relabeled as mmol/L just because both hit factor 1.0
+    row4 = std.filter(F.col("measurement_id") == 4).collect()[0]
+    assert row4["unit_std"] is None
+    assert row4["numeric_value_std"] is None
+
+    # the mmol/L rows should still convert/pass through normally
+    mmol_rows = std.filter(F.col("unit_source_value") == "mmol/L").collect()
+    assert all(r["unit_std"] == "mmol/L" for r in mmol_rows)
+
 def test_guards(spark, measurement, concept, concept_ancestor):
     with pytest.raises(ValueError):
         std_msmt = standardize_measurement_concept_id("foo", concept, concept_ancestor)
