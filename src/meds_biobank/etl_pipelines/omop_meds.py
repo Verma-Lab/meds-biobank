@@ -39,7 +39,7 @@ def extract_events(df, table):
             df = df.withColumn(col, F.col(col).cast("string"))
 
     # all source tables, hash patient id
-    events = df.withColumn("patient_id", F.crc32(F.col("person_id").cast("string"))) # hash to patient id
+    events = df.withColumn("patient_id", F.xxhash64(F.col("person_id").cast("string"))) # hash to patient id
 
     # person source table
     if table == "person":
@@ -568,7 +568,7 @@ def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
     splits = spark.createDataFrame(data, schema=cols)
     
     # cast person id col
-    splits = splits.withColumn("patient_id", F.crc32("person_id")).drop("person_id")
+    splits = splits.withColumn("patient_id", F.xxhash64("person_id")).drop("person_id")
 
     # TODO: cast to meds split schema before returning
     # splits = splits.select(*[f.name for f in schemas.MEDS_SPLIT_SCHEMA.fields])
