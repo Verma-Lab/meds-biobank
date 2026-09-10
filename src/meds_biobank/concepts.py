@@ -15,3 +15,21 @@ VISIT_FLAGS = {
     "IsOutpatientFaceToFaceVisit": 700000005,
     "IsVideoVisit": 700000007,
 }
+
+# task phecodes
+HCM_PHECODES = ["CV_414.1", "CV_414.11"]
+DCM_PHECODES = ["CV_414.2"]
+ECHO_CPT4_CODES = ["93306", "93307", "93308"]
+
+# genetic variants
+HCM_ESTABLISHED = ["MYBPC3", "MYH7", "TNNI3", "TNNT2", "TPM1", "MYL2", "MYL3"] # hcm
+HCM_LIMITED_MODERATE = ["ALPK3", "CSRP3", "FLNC", "TRIM63", "PRKAG2"]
+HCM_NOT_ESTABLISHED = ["DES", "DSP", "PLN", "LMNA", "BAG3", "RBM20", "SCN5A", "TTN", "FBN1"]
+
+# record DCM variants
+DCM_ESTABLISHED = ["TTN", "LMNA", "MYH7", "TNNT2", "BAG3", "RBM20", "FLNC", "DSP", "PLN"]
+DCM_LIMITED_MODERATE = ["DES", "CSRP3", "TRIM63", "SCN5A"]
+DCM_NOT_ESTABLISHED = ["MYBPC3", "TNNI3", "TPM1", "MYL2", "MYL3", "ALPK3", "PRKAG2", "FBN1"]
+
+# record heart failure phecodes
+HF_PHECODES = ["CV_424", "CV_424.1", "CV_424.2", "CV_424.3", "CV_424.4", "CV_424.5", "CV_424.7"]

@@ -13,6 +13,267 @@ SPECIAL_CONCEPTS = {k:v for k,v in concepts.VISIT_FLAGS.items()}
 SPECIAL_CONCEPTS["OMOP_BIRTH"] = OMOP_BIRTH
 SPECIAL_CONCEPTS["OMOP_DEATH"] = OMOP_DEATH
 
+def _extract_demographics_events(events):
+    """
+    events: |patient_id|birth_datetime|gender_concept_id|race_concept_id|ethnicity_concept_id|
+    return: |patient_id|time|concept_id|
+    """
+
+    # get time as birthdate
+    events = events.withColumn("time", F.to_timestamp(F.col("birth_datetime")))
+
+    # get birth events
+    birth_events = (
+        events
+        .withColumn("concept_id", F.lit(OMOP_BIRTH))
+        .select("patient_id", "time", "concept_id")
+    )
+
+    # get demographic events: gender
+    gender_events = (
+        events
+        .filter(F.col("gender_concept_id") != 0)
+        .withColumn("concept_id", F.col("gender_concept_id"))
+        .select("patient_id", "time", "concept_id")
+    )
+
+    # get demographic events: race
+    race_events = (
+        events
+        .filter(F.col("race_concept_id") != 0)
+        .withColumn("concept_id", F.col("race_concept_id"))
+        .select("patient_id", "time", "concept_id")
+    )
+
+    # get demographic events: ethnicity
+    ethnicity_events = (
+        events
+        .filter(F.col("ethnicity_concept_id") != 0)
+        .withColumn("concept_id", F.col("ethnicity_concept_id"))
+        .select("patient_id", "time", "concept_id")
+    )
+
+    # union events
+    events = birth_events.union(gender_events).union(race_events).union(ethnicity_events)
+
+    return events
+
+def _extract_death_events(events):
+    """
+    events: |patient_id|death_date|
+    return: |patient_id|time|concept_id|
+    """
+
+    # get death events
+    events = (
+        events
+        .withColumn("concept_id", F.lit(OMOP_DEATH))
+        .withColumn("time", F.to_timestamp(F.col("death_date")))
+        .select("patient_id", "time", "concept_id")
+    )
+
+    return events
+
+def _extract_visit_events(events):
+    """
+    events: |visit_occurrence_id|visit_concept_id|visit_[start/end]_[date/datetime]|discharge_to_concept_id|
+    return: |patient_id|time|concept_id|end|visit_id|
+    """
+
+    # get visit (start) events
+    admission_events = (
+        events
+        .withColumn("time", F.coalesce(F.col("visit_start_datetime"), F.to_timestamp(F.col("visit_start_date"))))
+        .withColumn(
+            "concept_id",
+            (
+                F.when(F.col("visit_concept_id") != 0, F.col("visit_concept_id"))
+                .otherwise(F.lit(8)) # generic OMOP visit concept_id
+            )
+        )
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+        .select("patient_id", "time", "concept_id", "end", "visit_id")
+    )
+
+    # get visit discharge events
+    discharge_events = (
+        events
+        .filter(F.col("discharge_to_concept_id").isNotNull())
+        .filter(F.col("discharge_to_concept_id") != 0)
+        .withColumnRenamed("discharge_to_concept_id", "concept_id")
+        .withColumn("time", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+        .filter(F.col("time").isNotNull())
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
+        .select("patient_id", "time", "concept_id", "end", "visit_id")
+    )
+
+    # union
+    events = admission_events.unionByName(discharge_events, allowMissingColumns=False)
+
+    return events
+
+def _extract_visit_supplement_events(events):
+    """
+    events: |patient_id|visit_occurrence_id|visit_start_datetime|VISIT_FLAGS**|
+    returns: |patient_id|time|code|visit_id|
+    """
+
+    # extract visit supplement events
+    flags = list(VISIT_FLAGS.keys())
+    stack_args = ", ".join(f"'{c}', {c}" for c in flags)
+    mapping_expr = F.create_map([F.lit(x) for pair in VISIT_FLAGS.items() for x in pair])
+    events = (
+        events
+        .withColumn("time", F.to_timestamp(F.col("visit_start_datetime")))
+        .selectExpr("*", f"stack({len(flags)}, {stack_args}) as (code, value)")
+        .drop(*flags)
+        .filter(F.col("value") == 1)
+        .withColumn("code", mapping_expr[F.col("code")])
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .select("patient_id", "time", "code", "visit_id")
+    )
+
+    return events
+
+def _extract_drug_events(events):
+    """
+    events: |patient_id|drug_concept_id|drug_exposure_[start/end]_[date/datetime]|visit_occurrence_id|
+    return: |patient_id|time|concept_id|end|visit_id|
+    """
+
+    # get drug events
+    events = (
+        events
+        .withColumn("time", F.coalesce(F.col("drug_exposure_start_datetime"), F.to_timestamp(F.col("drug_exposure_start_date"))))
+        .withColumn("concept_id", F.col("drug_concept_id"))
+        .filter(F.col("concept_id") != 0)
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .withColumn("end", F.coalesce(F.col("drug_exposure_end_datetime"), F.to_timestamp(F.col("drug_exposure_end_date"))))
+        .select("patient_id", "time", "concept_id", "end", "visit_id")
+    )
+
+    return events
+
+def _extract_condition_events(events):
+    """
+    events: |patient_id|condition_status_source_value|condition_[start/end]_[date/datetime]|condition_concept_id|visit_occurrence_id|
+    return: |patient_id|time|concept_id|end|visit_id|
+    """
+
+    # extract condition events
+    events = (
+        events
+        .filter(F.coalesce(F.trim(F.lower(F.col("condition_status_source_value"))), F.lit("")) != "professional charge diagnoses")
+        .withColumn("time", F.coalesce(F.col("condition_start_datetime"), F.to_timestamp(F.col("condition_start_date"))))
+        .withColumn("concept_id", F.col("condition_concept_id"))
+        .filter(F.col("concept_id") != 0)
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .withColumn("end", F.coalesce(F.col("condition_end_datetime"), F.to_timestamp(F.col("condition_end_date"))))
+        .select("patient_id", "time", "concept_id", "end", "visit_id")
+    )
+
+    return events
+
+def _extract_procedure_events(events):
+    """
+    events: |patient_id|procedure_[time/datetime]|procedure_concept_id|visit_occurrence_id|
+    return: |patient_id|time|concept_id|visit_id|
+    """
+
+    # get procedure events
+    events = (
+        events
+        .withColumn("time", F.coalesce(F.col("procedure_datetime"), F.to_timestamp(F.col("procedure_date"))))
+        .withColumn("concept_id", F.col("procedure_concept_id"))
+        .filter(F.col("concept_id") != 0)
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .select("patient_id", "time", "concept_id", "visit_id")
+    )
+
+    return events
+
+def _extract_observation_events(events):
+    """
+    events: |patient_id|observation_concept_id|observation_[date/datetime]|visit_occurrence_id|unit_source_value|value_as_[number/string/concept_id]|
+    return: |patient_id|time|concept_id|value|visit_id|unit|
+    """
+
+    # shared prep
+    base = (
+        events
+        .filter(F.col("observation_concept_id") != OMOP_BIRTH) # make sure we only read birth and death events from OMOP birth and death tables
+        .filter(F.col("observation_concept_id") != OMOP_DEATH) # ditto
+        .withColumn("time", F.coalesce(F.col("observation_datetime"), F.to_timestamp(F.col("observation_date"))))
+        .withColumn("visit_id", F.col("visit_occurrence_id"))
+        .withColumn("unit", F.col("unit_source_value"))
+    )
+
+    # main observation events: code = observation_concept_id
+    obs_events = (
+        base
+        .withColumn("concept_id", F.col("observation_concept_id"))
+        .filter(F.col("concept_id") != 0)
+        .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_as_string")))
+        .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
+    )
+
+    # value-as-concept events: share metadata with the original row, code = value_as_concept_id, no separate value
+    value_concept_events = (
+        base
+        .filter(F.col("value_as_concept_id").isNotNull() & (F.col("value_as_concept_id") != 0))
+        .withColumn("concept_id", F.col("value_as_concept_id"))
+        .withColumn("value", F.lit(None).cast("string"))
+        .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
+    )
+
+    # union
+    events = obs_events.unionByName(value_concept_events)
+
+    return events
+
+def _extract_measurement_events(events):
+    """
+    events: |patient_id|measurement_id|measurement_[date/datetime]|measurement_concept_id|value_as_number|value_source_value|visit_occurrence_id|unit_source_value|
+    ... if in addition measurements are prestandardized, will have: |concept_id_std|numeric_value_std|text_value_std|
+    return: |patient_id|time|concept_id|value|visit_id|unit|
+    """
+
+    # dedup
+    events = events.dropDuplicates(["measurement_id"])
+
+    # if measurements are standardized
+    if "concept_id_std" in {field.name for field in events.schema}:
+
+        # get measurement events, standardized path
+        events = (
+            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+            .withColumn("concept_id", F.col("concept_id_std"))
+            .filter(F.col("concept_id") != 0)
+            .withColumn("value", F.coalesce(F.col("numeric_value_std").cast("string"), F.col("text_value_std"))) # basically either a float or smthg like "negative" or "-", etc.
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("unit", F.col("unit_std"))
+            .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
+        )
+    
+    # if measurements are not standardized
+    else:
+        
+        # get measurement events, unstandardized path
+        events = (
+            events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
+            .withColumn("concept_id", F.col("measurement_concept_id"))
+            .filter(F.col("concept_id") != 0)
+            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
+            .withColumn("visit_id", F.col("visit_occurrence_id"))
+            .withColumn("unit", F.col("unit_source_value"))
+            .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
+        )
+
+    return events
+    
+
 def extract_events(df, table):
     """
     Convert an OMOP table into an unordered MEDS-DataSchema-LIKE table in flat format, containing all events
@@ -20,20 +281,19 @@ def extract_events(df, table):
 
     Args:
         df (pyspark.sql.DataFrame):
-            Desc: OMOP events table
-            Schema: |person_id|concept_id|{table_name}_start_date|...
+            Desc: OMOP events dataframe
+            Schema: Depends on table - see helper functions
         table (str):
             Desc: OMOP table name (e.g. "visit_occurrence", "drug_exposure")
 
     Returns:
         events (pyspark.sql.DataFrame):
             Desc: a MEDS table in flat format w/ metadata expanded, containing all events
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
-            Notes:
-                code = concept_id (NOT vocabulary_id/code)
+            Schema: |patient_id|code|time|end|value|unit|visit_id|
+                - code = concept_id (NOT vocabulary_id/code as in MEDS 0.1.3., the ETL toolchain corresponding to CLMBR-T-base)
     """
 
-    # fix source val cols
+    # cast source value columns
     for col in df.columns:
         if col.endswith("_source_value"):
             df = df.withColumn(col, F.col(col).cast("string"))
@@ -44,212 +304,55 @@ def extract_events(df, table):
     # person source table
     if table == "person":
 
-        # get time as birthdate
-        events = events.withColumn("time", F.to_timestamp(F.col("birth_datetime")))
-
-        # get birth events
-        birth_events = (
-            events
-            .withColumn("concept_id", F.lit(OMOP_BIRTH))
-            .select("patient_id", "time", "concept_id")
-        )
-
-        # get demographic events: gender
-        gender_events = (
-            events
-            .filter(F.col("gender_concept_id") != 0)
-            .withColumn("concept_id", F.col("gender_concept_id"))
-            .select("patient_id", "time", "concept_id")
-        )
-
-        # get demographic events: race
-        race_events = (
-            events
-            .filter(F.col("race_concept_id") != 0)
-            .withColumn("concept_id", F.col("race_concept_id"))
-            .select("patient_id", "time", "concept_id")
-        )
-
-        # get demographic events: ethnicity
-        ethnicity_events = (
-            events
-            .filter(F.col("ethnicity_concept_id") != 0)
-            .withColumn("concept_id", F.col("ethnicity_concept_id"))
-            .select("patient_id", "time", "concept_id")
-        )
-
-        # form events
-        events = birth_events.union(gender_events).union(race_events).union(ethnicity_events)
+        # extract demographics events
+        events = _extract_demographics_events(events)
     
     # death source table
     elif table == "death":
 
         # get death events
-        events = (
-            events
-            .withColumn("concept_id", F.lit(OMOP_DEATH))
-            .withColumn("time", F.to_timestamp(F.col("death_date")))
-            .select("patient_id", "time", "concept_id")
-        )
+        events = _extract_death_events(events)
 
     # visit_occurrence source table
     elif table == "visit_occurrence":
         
-        # get visit (start) events
-        admission_events = (
-            events
-            .withColumn("time", F.coalesce(F.col("visit_start_datetime"), F.to_timestamp(F.col("visit_start_date"))))
-            .withColumn(
-                "concept_id",
-                (
-                    F.when(F.col("visit_concept_id") != 0, F.col("visit_concept_id"))
-                    .otherwise(F.lit(8)) # generic OMOP visit concept_id
-                )
-            )
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
-            .select("patient_id", "time", "concept_id", "end", "visit_id")
-        )
-
-        # get visit discharge events
-        discharge_events = (
-            events
-            .filter(F.col("discharge_to_concept_id").isNotNull())
-            .filter(F.col("discharge_to_concept_id") != 0)
-            .withColumnRenamed("discharge_to_concept_id", "concept_id")
-            .withColumn("time", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
-            .filter(F.col("time").isNotNull())
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("end", F.coalesce(F.col("visit_end_datetime"), F.to_timestamp(F.col("visit_end_date"))))
-            .select("patient_id", "time", "concept_id", "end", "visit_id")
-        )
-
-        # union
-        events = admission_events.unionByName(discharge_events, allowMissingColumns=False)
+        # get visit admission and discharge events
+        events = _extract_visit_events(events)
     
     # handle visit occurrence supplement
     elif table == "visit_occurrence_supplement":
-        flags = list(VISIT_FLAGS.keys())
-        stack_args = ", ".join(f"'{c}', {c}" for c in flags)
-        mapping_expr = F.create_map([F.lit(x) for pair in VISIT_FLAGS.items() for x in pair])
-        events = (
-            events
-            .withColumn("time", F.to_timestamp(F.col("visit_start_datetime")))
-            .selectExpr("*", f"stack({len(flags)}, {stack_args}) as (code, value)")
-            .drop(*flags)
-            .filter(F.col("value") == 1)
-            .withColumn("code", mapping_expr[F.col("code")])
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .select("patient_id", "time", "code", "visit_id")
-        )
+        
+        # extract visit supplement "events"
+        events = _extract_visit_supplement_events(events)
     
     # drug_occurrence table
     elif table == "drug_exposure":
 
-        # get drug events (event_type comes from concept.domain_id in create_concept_schema, not assigned here)
-        events = (
-            events
-            .withColumn("time", F.coalesce(F.col("drug_exposure_start_datetime"), F.to_timestamp(F.col("drug_exposure_start_date"))))
-            .withColumn("concept_id", F.col("drug_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("end", F.coalesce(F.col("drug_exposure_end_datetime"), F.to_timestamp(F.col("drug_exposure_end_date"))))
-            .select("patient_id", "time", "concept_id", "end", "visit_id")
-        )
+        # get drug events
+        events = _extract_drug_events(events)
     
     # condition table
     elif table == "condition_occurrence":
 
-        # get condition events (event_type comes from concept.domain_id in create_concept_schema, not assigned here)
-        events = (
-            events
-            .withColumn("time", F.coalesce(F.col("condition_start_datetime"), F.to_timestamp(F.col("condition_start_date"))))
-            .withColumn("concept_id", F.col("condition_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("end", F.coalesce(F.col("condition_end_datetime"), F.to_timestamp(F.col("condition_end_date"))))
-            .select("patient_id", "time", "concept_id", "end", "visit_id")
-        )
+        # get condition events
+        events = _extract_condition_events(events)
     
     # procedure table
     elif table == "procedure_occurrence":
 
-        # get procedure events (event_type comes from concept.domain_id in create_concept_schema, not assigned here)
-        events = (
-            events
-            .withColumn("time", F.coalesce(F.col("procedure_datetime"), F.to_timestamp(F.col("procedure_date"))))
-            .withColumn("concept_id", F.col("procedure_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .select("patient_id", "time", "concept_id", "visit_id")
-        )
+        # get procedure events
+        events = _extract_procedure_events(events)
     
     # observation table
     elif table == "observation":
 
-        # shared prep (event_type comes from concept.domain_id in create_concept_schema, not assigned here)
-        base = (
-            events
-            .filter(F.col("observation_concept_id") != OMOP_BIRTH) # make sure we only read birth and death events from OMOP birth and death tables
-            .filter(F.col("observation_concept_id") != OMOP_DEATH) # ditto
-            .withColumn("time", F.coalesce(F.col("observation_datetime"), F.to_timestamp(F.col("observation_date"))))
-            .withColumn("visit_id", F.col("visit_occurrence_id"))
-            .withColumn("unit", F.col("unit_source_value"))
-        )
-
-        # main observation events: code = observation_concept_id
-        obs_events = (
-            base
-            .withColumn("concept_id", F.col("observation_concept_id"))
-            .filter(F.col("concept_id") != 0)
-            .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_as_string")))
-            .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
-        )
-
-        # value-as-concept events: share metadata with the original row, code = value_as_concept_id, no separate value
-        value_concept_events = (
-            base
-            .filter(F.col("value_as_concept_id").isNotNull() & (F.col("value_as_concept_id") != 0))
-            .withColumn("concept_id", F.col("value_as_concept_id"))
-            .withColumn("value", F.lit(None).cast("string"))
-            .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
-        )
-
-        # union
-        events = obs_events.unionByName(value_concept_events)
+        # get observation events
+        events = _extract_observation_events(events)
 
     elif table == "measurement":
 
-        # dedup
-        events = events.dropDuplicates(["measurement_id"])
-
-        # if measurements are standardized
-        if "concept_id_std" in {field.name for field in df.schema}:
-
-            # get measurement events, standardized path
-            events = (
-                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-                .withColumn("concept_id", F.col("concept_id_std"))
-                .filter(F.col("concept_id") != 0)
-                .withColumn("value", F.coalesce(F.col("numeric_value_std").cast("string"), F.col("text_value_std"))) # basically either a float or smthg like "negative" or "-", etc.
-                .withColumn("visit_id", F.col("visit_occurrence_id"))
-                .withColumn("unit", F.col("unit_std"))
-                .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
-            )
-        
-        # if measurements are not standardized
-        else:
-            
-            # get measurement events, unstandardized path
-            events = (
-                events.withColumn("time", F.coalesce(F.col("measurement_datetime"), F.to_timestamp(F.col("measurement_date"))))
-                .withColumn("concept_id", F.col("measurement_concept_id"))
-                .filter(F.col("concept_id") != 0)
-                .withColumn("value", F.coalesce(F.col("value_as_number").cast("string"), F.col("value_source_value"))) # basically either a float or smthg like "negative" or "-", etc.
-                .withColumn("visit_id", F.col("visit_occurrence_id"))
-                .withColumn("unit", F.col("unit_source_value"))
-                .select("patient_id", "time", "concept_id", "value", "visit_id", "unit")
-            )
+        # get measurement events
+        events = _extract_measurement_events(events)
 
     # undefined table
     else:
@@ -264,9 +367,6 @@ def extract_events(df, table):
     # handle concept_id
     if "code" not in events.columns:
         events = events.withColumn("code", F.col("concept_id")).drop("concept_id")
-
-    # cast visit id to correct type
-    events = events.withColumn("visit_id", F.col("visit_id"))
         
     return events
 
@@ -275,18 +375,18 @@ def gather_events(event_dfs):
     Args:
         event_dfs (List<pyspark.sql.DataFrame>):
             Desc: 
-            Df Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+            Df Schema: |patient_id|code|time|end|value|unit|visit_id|
     Returns:
         all_events (pyspark.sql.DataFrame):
             Desc: 
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|value|unit|visit_id|
     """
 
     # handle error case
     if len(event_dfs) == 0:
         raise Exception("ERROR: No tables to join in gather_events()")
 
-    # handle all event dfs
+    # union all event dfs
     final_df = event_dfs[0]
     for df in event_dfs[1:]:
         final_df = final_df.unionByName(df, allowMissingColumns=False)
@@ -299,11 +399,11 @@ def prune_events(events):
     Args:
         events (pyspark.sql.DataFrame):
             Desc: 
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|value|unit|visit_id|
     Returns:
         pruned_events (pyspark.sql.DataFrame):
             Desc: 
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|value|unit|visit_id|
     """
     # remove nones (if patient has duplicate codes @ time and at least one copy has non-null value, drop null copies
     w = Window.partitionBy("patient_id", "code", F.to_date("time"))
@@ -342,13 +442,15 @@ def post_process_events(events):
     Args:
         events (pyspark.sql.DataFrame):
             Desc: 
-            Schema: |patient_id|code|time|end|value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|value|unit|visit_id|
     Returns:
         processed_events (pyspark.sql.DataFrame):
             Desc: 
-            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
+            Schema: |patient_id|code|time|end|numeric_value|text_value|unit|visit_id|
     """
-    events = ( # TODO: replace with pyspark sql pattern (avoid SQL injections)
+
+    # parse value as number if possible, otherwise as text if possible
+    events = (
         events
         .withColumn("numeric_value", F.expr("try_cast(value AS DOUBLE)"))
         .withColumn("text_value", F.when(F.expr("try_cast(value AS DOUBLE)").isNull(), F.col("value")).otherwise(F.lit(None)))
@@ -367,21 +469,30 @@ def format_events(events):
             Desc: 
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
     """
-    return events.orderBy("patient_id", "time", "visit_id") # TODO: bring visit admission to front, visit discharge to end of same timestamp
+
+    # reorder events
+    events = events.orderBy("patient_id", "time", "visit_id")
+
+    return events
 
 def create_concept_schema(events, concept, concept_ancestor):
     """
     Args:
         events (pyspark.sql.DataFrame):
-            Desc: 
+            Desc: ...
             Schema: |patient_id|code|time|end|numeric_value|text_value|unit|event_type|visit_id|
-        concept (pyspark.sql.DataFrame): |concept_id|metadata|
-        concept_ancestor (pyspark.sql.DataFrame): |ancestor_concept_id|descendant_concept_id|min_levels_of_separation|max_levels_of_separation|
+        concept (pyspark.sql.DataFrame):
+            Desc: ...
+            Schema: |concept_id|metadata|
+        concept_ancestor (pyspark.sql.DataFrame):
+            Desc: ...
+            Schema: |ancestor_concept_id|descendant_concept_id|min_levels_of_separation|max_levels_of_separation|
     Returns:
         concept_schema (pyspark.sql.DataFrame):
             Desc: metadata schema for all concepts that can (do!) occur in the data
             Schema: |code|name|ancestors|factors|
-            ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
+                - ancestors: array<struct<ancestor_concept_id, min_levels_of_separation>>
+                - factors: array<factor>
     """
 
     # select all concepts and names
@@ -393,15 +504,14 @@ def create_concept_schema(events, concept, concept_ancestor):
         oc,
         cn.concept_id == oc.code,
         "inner"
-    ).drop("code")
+    ).drop("code") # concept_id, concept_name
 
-    # collect (ancestor, distance) pairs into one array of structs — keeps them bound
-    # together so there's no risk of two separate arrays misaligning
+    # collect (ancestor, distance) pairs into one array of structs
     ca_filt = concept_ancestor.join(
         oc,
         concept_ancestor.descendant_concept_id == oc.code,
         "inner"
-    ).drop("code")
+    ).drop("code") # descendant_concept_id, ancestor_concept_id, concept_name
     ca = (
         ca_filt
         .filter(F.col("descendant_concept_id") != F.col("ancestor_concept_id"))
@@ -516,29 +626,19 @@ def create_concept_schema(events, concept, concept_ancestor):
     # lowercase domain
     cn = cn.withColumn("event_type", F.lower("event_type"))
 
-    # TODO: enforce the declared schema exactly
-    # cn = cn.select(*[f.name for f in schemas.MEDS_CONCEPT_SCHEMA.fields])
-    # cn = cn.sparkSession.createDataFrame(cn.rdd, schema=schemas.MEDS_CONCEPT_SCHEMA)
-
     return cn
 
-def extract_tasks(
-    concept,
-    concept_ancestor,
-    condition_occurrence,
-    death,
-    drug_exposure,
-    measurement,
-    observation,
-    person,
-    procedure_occurrence,
-    visit_occurrence,
-    splits
-):
-    # TODO
-    pass
-
 def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
+    """
+    Args:
+        person (pyspark.sql.DataFrame):
+            Desc: 
+            Schema: |person_id|*
+    Returns:
+        splits (pyspark.sql.DataFrame):
+            Desc: key mapping patient id to split (train/val/test/task)
+            Schema: |patient_id|split|
+    """
 
     # type guard
     if not isinstance(person, DataFrame):
@@ -569,10 +669,6 @@ def extract_splits(spark, person, train=0.7, val=0.1, test=0.1, task=0.1):
     
     # cast person id col
     splits = splits.withColumn("patient_id", F.xxhash64("person_id")).drop("person_id")
-
-    # TODO: cast to meds split schema before returning
-    # splits = splits.select(*[f.name for f in schemas.MEDS_SPLIT_SCHEMA.fields])
-    # splits = splits.sparkSession.createDataFrame(splits.rdd, schema=schemas.MEDS_SPLIT_SCHEMA)
 
     return splits
 

@@ -5,6 +5,8 @@ import pyspark.sql.functions as F
 
 SPECIAL_TOKENS = ["BOS", "BOE"]
 
+# TODO: add pad token
+
 class BaseTokenizer():
 
     def __init__(
