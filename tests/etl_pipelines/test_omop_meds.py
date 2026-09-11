@@ -1,9 +1,11 @@
 import pytest
 import pyspark.sql.functions as F
 from meds_biobank.etl_pipelines.omop_meds import extract_events, gather_events, prune_events, post_process_events, format_events, create_concept_schema, extract_splits
+from meds_biobank.etl_pipelines.omop_meds import _extract_demographics_events
 from meds_biobank.standardizers.standardizers import standardize_measurement_concept_id, standardize_numeric_values_and_units, standardize_text_value
-from meds_biobank import schemas
+from meds_biobank import schemas, concepts
 from pyspark.testing import assertSchemaEqual
+from datetime import datetime
 
 @pytest.fixture(scope="session")
 def standardized_measurement(measurement, concept, concept_ancestor):
@@ -11,6 +13,76 @@ def standardized_measurement(measurement, concept, concept_ancestor):
     std = standardize_numeric_values_and_units(std)
     std = standardize_text_value(std)
     return std
+
+def test_extract_demographics(person):
+
+    # cast source value columns
+    for col in person.columns:
+        if col.endswith("_source_value"):
+            person = person.withColumn(col, F.col(col).cast("string"))
+
+    # all source tables, hash patient id
+    events = person.withColumn("patient_id", F.xxhash64(F.col("person_id").cast("string"))) # hash to patient id
+
+    # test extract demo events runs
+    events = _extract_demographics_events(events)
+
+    # ensure specific patient information
+    person_id = "1"
+
+    # extract just this patients events
+    patient_events = events.filter(F.col("patient_id") == F.xxhash64(F.lit(person_id)))
+
+    # ensure there are some
+    assert (patient_events.count() > 0)
+
+    # filter to their events only
+    patient_events = (
+        events
+        .filter(F.col("patient_id") == F.xxhash64(F.lit(person_id)))
+        .filter(F.col("concept_id") == concepts.OMOP_BIRTH)
+    )
+
+    # extract their birthdate and check it is correct
+    extracted_birthdate = patient_events.select("time").collect()[0]["time"]
+    assert (extracted_birthdate == datetime(1943, 12, 9))
+
+    # extract other fields and ensure correctness
+    gender_event_row = patient_events.select(F.col("concept_id") == F.lit(8507))
+    assert (gender_event_row.count() == 1)
+    race_event_row = patient_events.select(F.col("concept_id") == F.lit(8516))
+    assert (race_event_row.count() == 1)
+    ethnicity_event_row = patient_events.select(F.col("concept_id") == F.lit(38003563))
+    assert (ethnicity_event_row.count() == 1)
+
+    # ensure another specific patient information
+    person_id = "19"
+
+    # extract just this patients events
+    patient_events = events.filter(F.col("patient_id") == F.xxhash64(F.lit(person_id)))
+
+    # ensure there are some
+    assert (patient_events.count() > 0)
+
+    # filter to their events only
+    patient_events = (
+        events
+        .filter(F.col("patient_id") == F.xxhash64(F.lit(person_id)))
+        .filter(F.col("concept_id") == concepts.OMOP_BIRTH)
+    )
+
+    # extract their birthdate and check it is correct
+    extracted_birthdate = patient_events.select("time").collect()[0]["time"]
+    assert (extracted_birthdate == datetime(1969, 8, 26))
+
+    # extract other fields and ensure correctness
+    gender_event_row = patient_events.select(F.col("concept_id") == F.lit(8532))
+    assert (gender_event_row.count() == 1)
+    race_event_row = patient_events.select(F.col("concept_id") == F.lit(8557))
+    assert (race_event_row.count() == 1)
+    ethnicity_event_row = patient_events.select(F.col("concept_id") == F.lit(38003564))
+    assert (ethnicity_event_row.count() == 1)
+
 
 def test_extract_meds_events(
     concept,
