@@ -365,7 +365,7 @@ def create_acm_task(cases, death, visit):
     visit = visit.select("patient_id", "visit_date")
 
     # get time until death for each patient
-    return _time_until_first_event(cases, death_events, visit, drop_if_before_pred=True)
+    return _time_until_first_event(cases, death_events, visit, drop_if_event_before_pred=True)
 
 if __name__ == "__main__":
 
