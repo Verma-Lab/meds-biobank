@@ -345,7 +345,7 @@ def _get_death_events(death):
     """
     # get death events
     death = death.withColumn("patient_id", F.xxhash64("person_id"))
-    return death.select("patient_id", "death_date").withColumnRenamed("death_date", "event_date")
+    return death.select("patient_id", "death_date").withColumnRenamed("death_date", "event_time")
 
 def create_acm_task(cases, death, visit):
     """
