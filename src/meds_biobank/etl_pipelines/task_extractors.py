@@ -1,14 +1,14 @@
 from meds_biobank import concepts
 import pyspark.sql.functions as F
 
-def extract_disease_cohort(splits, cond_phex, proc, concept, x_codes, proc_codes):
+def extract_disease_cohort(cond_phex, proc, concept, x_codes, proc_codes):
     """
     Create a case and control cohort from ANY phecodes and procedure codes
     Case = phecode w/in 90 days of procedure code
 
-    Input: splits format |patient_id|split|
     Input: cond_phex format |person_id|condition_source_value|condition_start_datetime|condition_start_date|*
-    Input: proc format |person_id|procedure_source_value|procedure_datetime|procedure_date|*
+        NOTE: assumes condition_source_value has ALREADY been mapped to phecodes
+    Input: proc format |person_id|procedure_source_value|procedure_concept_id|procedure_datetime|procedure_date|*
     Input: concept format |concept_id|concept_name|vocabulary_id|*
     Input: x_codes format List[condition_source_value (phecode) (String)]
     Input: proc_codes format List[procedure_source_value (CPT4 code) (String)]
@@ -24,30 +24,15 @@ def extract_disease_cohort(splits, cond_phex, proc, concept, x_codes, proc_codes
     Return: patients with |patient_id|dx_time
     Return: controls with |patient_id|
     """
-    
-    # subset to task patients
-    task_pt_ids = splits.filter(F.col("split") == "task").select("patient_id").distinct()
 
     # cast patient id to match meds splits dataframe
     cond_phex = cond_phex.withColumn("patient_id", F.xxhash64(F.col("person_id"))).drop("person_id")
     proc = proc.withColumn("patient_id", F.xxhash64(F.col("person_id"))).drop("person_id")
 
-    # filter for task patients only
-    cond_phex = cond_phex.join(
-        task_pt_ids,
-        "patient_id",
-        "inner"
-    )
-    proc = proc.join(
-        task_pt_ids,
-        "patient_id",
-        "inner"
-    )
-
-    # filter conditions into hcm and dcm conditions
+    # filter conditions for user-specified phecodes
     cond = cond_phex.filter(F.col("condition_source_value").isin(x_codes))
 
-    # extract patients who have no hcm/dcm diagnosis as controls
+    # extract patients who have no phecode as controls
     controls = (
         task_pt_ids
         .join(
@@ -58,7 +43,7 @@ def extract_disease_cohort(splits, cond_phex, proc, concept, x_codes, proc_codes
         .select("patient_id")
     )
 
-    # for cases, extract phecode time as BOD for coalesce(condition_start_datetime/condition_start_date)
+    # for cases, extract phecode time as BOD
     cond = (
         cond
         .withColumn(
@@ -69,7 +54,7 @@ def extract_disease_cohort(splits, cond_phex, proc, concept, x_codes, proc_codes
         .select("patient_id", "phecode_time")
     )
 
-    # extract echo procedures
+    # match user-specified procedures
     proc = (
         proc
         .join(
@@ -87,10 +72,10 @@ def extract_disease_cohort(splits, cond_phex, proc, concept, x_codes, proc_codes
         .select("patient_id", "proc_time")
     )
 
-    # join echo procedures to HCM/DCM cond events
+    # join procedure events to phecode events
     proc_cond = proc.join(cond, "patient_id", "inner") # patient_id, phecode_time, proc_time
 
-    # filter for all pairs where phecode time is w/in 90 days of proc time
+    # filter for all pairs where phecode time is w/in 90 days of procedure time
     proc_cond = (
         proc_cond.filter(
             F.abs(F.datediff(F.col("proc_time"), F.col("phecode_time"))) <= 90
@@ -360,7 +345,7 @@ def _get_death_events(death):
     # get death events
     return death.select("person_id", "death_date").withColumnRenamed("death_date", "event_date")
 
-def create_acm_task(cases, death):
+def create_acm_task(cases, death, visit):
     """
     return: acm task w/ format |patient_id|pred_time|n_days|label|
     """
@@ -385,7 +370,6 @@ def create_acm_task(cases, death):
 if __name__ == "__main__":
 
     # read in necessary data
-    splits = ... # |patient_id|split|
     cond_phex = ... # |person_id|condition_source_value|condition_start_datetime|condition_start_date|*
     proc = ... # |person_id|procedure_source_value|procedure_datetime|procedure_date|*
     concept = ... # |concept_id|concept_name|vocabulary_id|*
@@ -394,8 +378,8 @@ if __name__ == "__main__":
     variants = ... # |person_id|**variant_cols|*
 
     # extract disease patients
-    hcm_cases, hcm_controls = extract_disease_cohort(splits, cond_phex, proc, concept, HCM_PHECODES, ECHO_CPT4_CODES)
-    dcm_cases, dcm_controls = extract_disease_cohort(splits, cond_phex, proc, concept, DCM_PHECODES, ECHO_CPT4_CODES)
+    hcm_cases, hcm_controls = extract_disease_cohort(cond_phex, proc, concept, HCM_PHECODES, ECHO_CPT4_CODES)
+    dcm_cases, dcm_controls = extract_disease_cohort(cond_phex, proc, concept, DCM_PHECODES, ECHO_CPT4_CODES)
 
     # extract onset tasks
     hcm_onset = create_onset_task(hcm_cases, hcm_controls, visits)
