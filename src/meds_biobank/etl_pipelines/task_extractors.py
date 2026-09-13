@@ -291,7 +291,7 @@ def _time_until_first_event(cases, events, visit, drop_if_event_before_pred=Fals
     
     return cases
 
-def _extract_hfh_events(visit, visit_supp, cond_phex, xcodes_hf):
+def _get_hfh_events(visit, visit_supp, cond_phex, xcodes_hf):
     # return |patient_id|event_time|
     
     # extract hospitalizations
@@ -332,13 +332,15 @@ def _extract_hfh_events(visit, visit_supp, cond_phex, xcodes_hf):
     return hf_hosp
 
 def create_hfh_task(cases, visit, visit_supp, cond_phex, xcodes_hf):
+    """
+    return: hfh task w/ format |patient_id|pred_time|n_days|label|
+    """
     
     # extract hfh events
-    hf_hosp = _extract_hfh_events(visit, visit_supp, cond_phex, xcodes_hf)
+    hf_hosp = _get_hfh_events(visit, visit_supp, cond_phex, xcodes_hf)
 
     # prepare cases as case df
-    cases = cases.withColumn("pred_time", F.col("dx_time"))
-    cases = cases.select("patient_id", "pred_time")
+    cases = cases.withColumn("pred_time", F.col("dx_time")).select("patient_id", "pred_time")
 
     # prepare visit
     visit = visit.withColumn(
@@ -349,6 +351,36 @@ def create_hfh_task(cases, visit, visit_supp, cond_phex, xcodes_hf):
     visit = visit.select("patient_id", "visit_date")
 
     return _time_until_first_event(cases, hf_hosp, visit, drop_if_event_before_pred=False)
+
+def _get_death_events(death):
+    """
+    death: |person_id|death_date|
+    return: |person_id|event_date|
+    """
+    # get death events
+    return death.select("person_id", "death_date").withColumnRenamed("death_date", "event_date")
+
+def create_acm_task(cases, death):
+    """
+    return: acm task w/ format |patient_id|pred_time|n_days|label|
+    """
+    
+    # extract death events
+    death_events = _get_death_events(death)
+
+    # prepare cases
+    cases = cases.withColumn("pred_time", F.col("dx_time")).select("patient_id", "pred_time")
+
+    # prepare visit
+    visit = visit.withColumn(
+        "visit_date",
+        F.date_trunc("day", F.coalesce(F.col("visit_start_datetime"), F.to_timestamp(F.col("visit_start_date"))))
+    )
+    visit = visit.withColumn("patient_id", F.xxhash64(F.col("person_id")))
+    visit = visit.select("patient_id", "visit_date")
+
+    # get time until death for each patient
+    return _time_until_first_event(cases, death_events, visit, drop_if_before_pred=True)
 
 if __name__ == "__main__":
 
