@@ -1,11 +1,12 @@
 from meds_biobank import concepts
 import pyspark.sql.functions as F
 
-def extract_disease_cohort(cond_phex, proc, concept, x_codes, proc_codes):
+def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes):
     """
     Create a case and control cohort from ANY phecodes and procedure codes
     Case = phecode w/in 90 days of procedure code
 
+    Input: pt_ids |patient_id|
     Input: cond_phex format |person_id|condition_source_value|condition_start_datetime|condition_start_date|*
         NOTE: assumes condition_source_value has ALREADY been mapped to phecodes
     Input: proc format |person_id|procedure_source_value|procedure_concept_id|procedure_datetime|procedure_date|*
@@ -34,7 +35,7 @@ def extract_disease_cohort(cond_phex, proc, concept, x_codes, proc_codes):
 
     # extract patients who have no phecode as controls
     controls = (
-        task_pt_ids
+        pt_ids
         .join(
             cond.select("patient_id").distinct(),
             "patient_id",
