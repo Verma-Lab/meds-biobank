@@ -7,7 +7,7 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     Case = phecode w/in 90 days of procedure code
 
     Input: pt_ids |patient_id|
-    Input: cond_phex format |person_id|condition_source_value|condition_start_datetime|condition_start_date|*
+    Input: cond_phex format |person_id|condition_source_value|condition_start_datetime|condition_start_date|visit_occurrence_id|*
         NOTE: assumes condition_source_value has ALREADY been mapped to phecodes
     Input: proc format |person_id|procedure_source_value|procedure_concept_id|procedure_datetime|procedure_date|*
     Input: concept format |concept_id|concept_name|vocabulary_id|*
@@ -344,7 +344,8 @@ def _get_death_events(death):
     return: |person_id|event_date|
     """
     # get death events
-    return death.select("person_id", "death_date").withColumnRenamed("death_date", "event_date")
+    death = death.withColumn("patient_id", F.xxhash64("person_id"))
+    return death.select("patient_id_id", "death_date").withColumnRenamed("death_date", "event_date")
 
 def create_acm_task(cases, death, visit):
     """
