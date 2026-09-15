@@ -318,14 +318,14 @@ def extract_events(df, table):
     # undefined table
     else:
         raise Exception(f"Table {table} not supported")
-    
-    # cast visit id to correct type
-    events = events.withColumn("visit_id", F.col("visit_id").cast("long"))
 
     # catch missing columns
     for col in ["end", "visit_id", "unit", "value"]:
         if col not in events.columns:
             events = events.withColumn(col, F.lit(None))
+    
+    # cast visit id to correct type
+    events = events.withColumn("visit_id", F.col("visit_id").cast("long"))
         
     return events
 

@@ -22,7 +22,7 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
         - this function extracts a control cohort of people not having the x_code at all
 
 
-    Return: patients with |patient_id|dx_time
+    Return: patients with |patient_id|dx_time|
     Return: controls with |patient_id|
     """
 
