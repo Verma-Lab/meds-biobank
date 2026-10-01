@@ -1,7 +1,7 @@
 from meds_biobank import concepts
 import pyspark.sql.functions as F
 
-def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes):
+def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes, delta=180):
     """
     Create a case and control cohort from ANY phecodes and procedure codes
     Case = phecode w/in 90 days of procedure code
@@ -79,7 +79,7 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     # filter for all pairs where phecode time is w/in 90 days of procedure time
     proc_cond = (
         proc_cond.filter(
-            F.abs(F.datediff(F.col("proc_time"), F.col("phecode_time"))) <= 90
+            F.abs(F.datediff(F.col("proc_time"), F.col("phecode_time"))) <= delta
         )
     )
 
@@ -92,7 +92,7 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
         .select("patient_id", "dx_time")
     ) # patient_id, dx_time
 
-    return cases, controls
+    return cases, controls # TODO: filter on pt ids?
 
 def create_onset_task(cases, controls, visits, npos=1000, nneg=1000):
     """
