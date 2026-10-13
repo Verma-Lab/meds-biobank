@@ -2,7 +2,7 @@ from meds_biobank import concepts
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 
-def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes, excl_codes, delta=180):
+def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes, excl_codes, onset_codes, delta=180):
     """
     Doc:
     - Create a case and control cohort from ANY phecodes and procedure codes
@@ -139,7 +139,15 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     ) # |patient_id|dx_time|
 
     # roll back dx date in case exists code before qualifier
-    first_phe = cond.groupBy("patient_id").agg(F.min("phecode_time").alias("first_phe"))
+    first_phe = (
+        cond_phex
+        .filter(F.col("condition_source_value").isin(x_codes + onset_codes))
+        .withColumn(
+            "phecode_time",
+            F.date_trunc("day", F.coalesce(F.col("condition_start_datetime"), F.to_timestamp(F.col("condition_start_date"))))
+        )
+        .groupBy("patient_id").agg(F.min("phecode_time").alias("first_phe"))
+    )
     cases = (
         cases
         .join(first_phe, "patient_id")
