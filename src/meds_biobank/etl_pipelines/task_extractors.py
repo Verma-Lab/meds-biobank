@@ -2,7 +2,7 @@ from meds_biobank import concepts
 import pyspark.sql.functions as F
 from pyspark.sql import Window
 
-def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes, excl_codes, onset_cids, delta=180):
+def extract_disease_cohort(pt_ids, cond_phex, cond_occ, proc, concept, x_codes, proc_codes, excl_codes, onset_cids, delta=180):
     """
     Doc:
     - Create a case and control cohort from ANY phecodes and procedure codes
@@ -34,6 +34,7 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     # cast patient id to match meds splits dataframe
     cond_phex = cond_phex.withColumn("patient_id", F.xxhash64(F.col("person_id"))).drop("person_id")
     proc = proc.withColumn("patient_id", F.xxhash64(F.col("person_id"))).drop("person_id")
+    cond_occ = cond_occ.withColumn("patient_id", F.xxhash64(F.col("person_id"))).drop("person_id")
 
     # filter for positive dx codes and stamp time
     cond = (
@@ -74,6 +75,10 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     # filter controls based on exclusion criteria
     excl = cond_phex.filter(F.col("condition_source_value").isin(excl_codes)).select("patient_id")
     controls = controls.join(excl, "patient_id", "leftanti")
+
+    # filter controls based on further exclusion criteria
+    excl_cid = cond_occ.filter(F.col("condition_source_concept_id").isin(onset_cids)).select("patient_id")
+    controls = controls.join(excl_cid, "patient_id", "leftanti")
 
     # for cases, extract phecode time as BOD
     cond = (
@@ -139,15 +144,16 @@ def extract_disease_cohort(pt_ids, cond_phex, proc, concept, x_codes, proc_codes
     ) # |patient_id|dx_time|
 
     # roll back dx date in case exists code before qualifier
-    first_phe = (
-        cond_phex
-        .filter(F.col("condition_source_value").isin(x_codes) | F.col("condition_source_concept_id").isin(onset_cids))
+    onset = (
+        cond_occ
+        .filter(F.col("condition_source_concept_id").isin(onset_cids))
         .withColumn(
             "phecode_time",
             F.date_trunc("day", F.coalesce(F.col("condition_start_datetime"), F.to_timestamp(F.col("condition_start_date"))))
         )
-        .groupBy("patient_id").agg(F.min("phecode_time").alias("first_phe"))
+        .select("patient_id", "phecode_time")
     )
+    first_phe = cond.unionByName(onset).groupBy("patient_id").agg(F.min("phecode_time").alias("first_phe"))
     cases = (
         cases
         .join(first_phe, "patient_id")
