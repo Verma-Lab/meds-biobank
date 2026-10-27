@@ -274,7 +274,7 @@ def extract_events(df, table):
     """
 
     # all source tables
-    events = df.withColumn("patient_id", F.col("person_id")) # hash to patient id
+    events = df.withColumn("patient_id", F.regexp_replace("person_id", "[A-Za-z]", "").cast("long")) # hash to patient id
 
     # person source table
     if table == "person":
